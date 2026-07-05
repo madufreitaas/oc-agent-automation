@@ -1,0 +1,12 @@
+pdfplumber>=0.11
+reportlab>=4.0
+pydantic>=2.7
+openai>=1.50
+python-dotenv>=1.0
+pandas>=2.2
+pytest>=8.0
+
+# Opcionais, apenas para o fallback de OCR em PDFs escaneados
+# (exigem tambem os binarios poppler e tesseract-ocr instalados no sistema):
+# pytesseract>=0.3
+# pdf2image>=1.17

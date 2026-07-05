@@ -1,0 +1,42 @@
+# Ambiente virtual e cache Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Credenciais e configuracao local
+.env
+.mcp.json
+
+# Saida gerada (banco, csv, relatorio) - reprodutivel via pipeline.py
+output/database/*.db
+output/database/backups/
+output/csv/*.csv
+output/report/*.html
+output/inbox_producao/
+output/logs/
+
+# Manter as pastas de output rastreadas mesmo vazias
+!output/database/.gitkeep
+!output/csv/.gitkeep
+!output/report/.gitkeep
+
+# PDFs reais (clientes/hospitais/pacientes de verdade) usados so para teste local.
+# Nunca devem ser publicados no repositorio, nem mesmo depois de redigidos.
+entrada_real/*.pdf
+entrada_real/processados/
+entrada_real_redigida/*.pdf
+entrada_real_redigida/processados/
+entrada_real_revisao/
+!entrada_real/.gitkeep
+!entrada_real_redigida/.gitkeep
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Rascunho interno de planejamento/continuidade entre sessoes - nao e
+# conteudo de portfolio, fica so local.
+CONTINUIDADE.md
