@@ -19,15 +19,15 @@ proxima execucao. Um arquivo que falha repetidamente (LIMITE_FALHAS_QUARENTENA
 tentativas) e movido para uma subpasta "falhas/" em vez de ficar sendo
 tentado para sempre.
 
-Antes de cada execucao, o banco e copiado para output/database/backups/
-(database.fazer_backup) e, se houver mais PDFs pendentes do que
-LIMITE_ARQUIVOS_POR_EXECUCAO, o excedente fica para a proxima execucao (util
-para nao estourar limite de taxa da API se a pasta acumular muitos arquivos).
+Se houver mais PDFs pendentes do que LIMITE_ARQUIVOS_POR_EXECUCAO, o
+excedente fica para a proxima execucao (util para nao estourar limite de taxa
+da API se a pasta acumular muitos arquivos).
 
-Cada modo grava por padrao em um banco SQLite diferente (para nao misturar
-dado real com dado de demonstracao): modo demo usa
-output/database/oc_agent_demo.db, modo producao usa
-output/database/oc_agent.db. Use --db para sobrepor esse caminho.
+Cada modo grava por padrao em um projeto Postgres/Supabase diferente (dois
+projetos SEPARADOS, para nao misturar dado real com dado de demonstracao):
+modo demo usa DATABASE_URL_DEMO, modo producao usa DATABASE_URL_PRODUCAO (ver
+.env e docs/arquitetura_webapp.md). Backup do banco agora e responsabilidade
+do proprio Supabase (nao ha mais copia de arquivo local a fazer).
 """
 
 from __future__ import annotations
@@ -124,7 +124,7 @@ def processar_pdf(conn, caminho_pdf: Path) -> bool:
 
 def executar_pipeline(
     modo: str = "demo",
-    db_path: str | Path = database.DB_PADRAO_PATH,
+    dsn: str | None = None,
     pasta_entrada: str | None = None,
 ) -> dict:
     """Executa o pipeline completo e retorna um resumo (total, sucesso, falhas)."""
@@ -146,9 +146,8 @@ def executar_pipeline(
         )
         pdfs = pdfs[:LIMITE_ARQUIVOS_POR_EXECUCAO]
 
-    database.fazer_backup(db_path)
-
-    conn = database.conectar(db_path)
+    dsn = dsn or (database.dsn_demo() if modo == "demo" else database.dsn_producao())
+    conn = database.conectar(dsn)
     database.inicializar_schema(conn)
 
     sucesso = 0
@@ -202,20 +201,17 @@ def main() -> None:
         help="Pasta de entrada para o modo producao (sobrepoe PASTA_ENTRADA_OC do .env).",
     )
     parser.add_argument(
-        "--db",
+        "--dsn",
         default=None,
         help=(
-            "Caminho do arquivo SQLite de saida. Se omitido, usa "
-            f"{database.DB_DEMO_PATH.name} em modo demo ou {database.DB_PADRAO_PATH.name} "
-            "em modo producao, para nao misturar dado real com dado de demonstracao."
+            "String de conexao Postgres. Se omitido, usa DATABASE_URL_DEMO em "
+            "modo demo ou DATABASE_URL_PRODUCAO em modo producao (.env), para "
+            "nao misturar dado real com dado de demonstracao."
         ),
     )
     args = parser.parse_args()
 
-    db_path = args.db or (
-        database.DB_DEMO_PATH if args.modo == "demo" else database.DB_PADRAO_PATH
-    )
-    executar_pipeline(modo=args.modo, db_path=db_path, pasta_entrada=args.pasta)
+    executar_pipeline(modo=args.modo, dsn=args.dsn, pasta_entrada=args.pasta)
 
 
 if __name__ == "__main__":

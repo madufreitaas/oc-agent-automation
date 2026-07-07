@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Login - Painel de Ordens de Compra</title>
+  <style>{{ css }}</style>
+</head>
+<body>
+<div class="container" style="max-width: 420px; padding-top: 15vh;">
+  <div class="cabecalho">
+    <p class="eyebrow">MDR / Mederi</p>
+    <h1>Painel de Ordens de Compra</h1>
+  </div>
+  <div class="secao" style="text-align:center;">
+    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 20px;">
+      Entre com sua conta Microsoft para continuar.
+    </p>
+    <button id="btn-login" class="btn" style="width:100%;">Entrar com Microsoft</button>
+    <p id="mensagem-erro" style="color: var(--status-critical); font-size: 12px; margin-top: 12px; display:none;"></p>
+  </div>
+</div>
+
+<script type="module">
+  // supabase-js via CDN (esm.sh), sem etapa de build - mesma filosofia do
+  // resto do projeto de evitar ferramental de front-end pesado. E o unico
+  // lugar do site que roda JavaScript de verdade (ver docstring de
+  // webapp/rotas/auth_rotas.py).
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+  const supabase = createClient({{ supabase_url_json | safe }}, {{ supabase_anon_key_json | safe }});
+  const mensagemErro = document.getElementById('mensagem-erro');
+
+  function mostrarErro(texto) {
+    mensagemErro.textContent = texto;
+    mensagemErro.style.display = 'block';
+  }
+
+  document.getElementById('btn-login').addEventListener('click', async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        // 'email' e exigido pelo Supabase para o provedor Azure. 'offline_access'
+        // segue a recomendacao da propria documentacao do Supabase para manter
+        // a renovacao de sessao confiavel (ver docs/arquitetura_webapp.md).
+        scopes: 'email offline_access',
+        redirectTo: window.location.origin + '/login',
+      },
+    });
+    if (error) mostrarErro(error.message);
+  });
+
+  // Depois do redirect de volta da Microsoft, o supabase-js processa
+  // automaticamente o codigo OAuth presente na URL (comportamento padrao,
+  // detectSessionInUrl) e dispara este evento com a sessao ja pronta.
+  supabase.auth.onAuthStateChange(async (evento, sessao) => {
+    if (evento !== 'SIGNED_IN' || !sessao) return;
+    try {
+      const resposta = await fetch('/auth/sessao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_token: sessao.access_token,
+          refresh_token: sessao.refresh_token,
+        }),
+      });
+      if (!resposta.ok) {
+        mostrarErro('Nao foi possivel validar a sessao no servidor.');
+        return;
+      }
+      window.location.href = '/';
+    } catch (erro) {
+      mostrarErro('Falha de rede ao validar a sessao.');
+    }
+  });
+</script>
+</body>
+</html>

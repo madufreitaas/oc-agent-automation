@@ -11,5 +11,5 @@ SELECT
     oc.data_extracao
 FROM ordens_compra oc
 JOIN clientes c ON c.id = oc.cliente_id
-WHERE oc.alerta_baixa_confianca = 1
+WHERE oc.alerta_baixa_confianca
 ORDER BY oc.confianca_extracao ASC;

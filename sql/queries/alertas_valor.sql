@@ -13,5 +13,5 @@ SELECT
     oc.data_extracao
 FROM ordens_compra oc
 JOIN clientes c ON c.id = oc.cliente_id
-WHERE oc.alerta_valor_divergente = 1
+WHERE oc.alerta_valor_divergente
 ORDER BY oc.data_extracao DESC;

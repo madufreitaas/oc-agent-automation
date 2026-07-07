@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set aba_ativa = "analytics" %}
+{% block content %}
+<div class="grid-cards">
+  <div class="card"><div class="rotulo">Total de OCs processadas</div><div class="valor">{{ indicadores.total_ocs }}</div></div>
+  <div class="card"><div class="rotulo">Valor total acumulado</div><div class="valor">{{ fmt_moeda(indicadores.valor_total) }}</div></div>
+  <div class="card"><div class="rotulo">Ticket medio por OC</div><div class="valor">{{ fmt_moeda(indicadores.ticket_medio) }}</div></div>
+  <div class="card"><div class="rotulo">Clientes distintos</div><div class="valor">{{ indicadores.clientes_distintos }}</div></div>
+  <div class="card"><div class="rotulo">OCs com alerta</div><div class="valor"><span class="status-dot {{ classe_dot_alerta_kpi }}"></span>{{ indicadores.ocs_com_alerta }}</div></div>
+</div>
+
+<div class="grid-2col">
+  <div class="secao">
+    <h2>Valor total por cliente</h2>
+    {{ barras_por_cliente | safe }}
+  </div>
+
+  <div class="secao">
+    <h2>Itens mais recorrentes (quantidade total)</h2>
+    {{ barras_itens | safe }}
+  </div>
+</div>
+{% endblock %}

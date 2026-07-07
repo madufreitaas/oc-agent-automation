@@ -1,0 +1,45 @@
+# Blueprint do Render (Fase 6 da migracao para backend real - ver
+# docs/arquitetura_webapp.md). Usar via "New +" > "Blueprint" no painel do
+# Render, apontando para este repositorio - ele le este arquivo e propoe a
+# criacao do servico com os valores abaixo ja preenchidos.
+#
+# IMPORTANTE: SUPABASE_SERVICE_ROLE_KEY (chave que ignora RLS) NAO aparece
+# aqui de proposito - o site nunca precisa dela (so o pipeline local, que
+# nunca roda no host de deploy). Reduz o que fica exposto no ambiente do
+# servidor publico, mesmo sendo uma variavel de ambiente (nao enviada ao
+# navegador de qualquer forma).
+#
+# As variaveis com "sync: false" ficam em branco aqui - o Render pede para
+# preencher na hora de criar o servico (ou depois, em Environment). Copie os
+# valores do seu .env local (DATABASE_URL_DEMO precisa ser a string do
+# Session Pooler, nao a de conexao direta - ver docs/arquitetura_webapp.md).
+services:
+  - type: web
+    name: oc-agent-automation
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd src && python -m uvicorn webapp.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: DATABASE_URL_DEMO
+        sync: false
+      - key: DATABASE_URL_PRODUCAO
+        sync: false
+      - key: MODO_EXECUCAO
+        value: demo
+      - key: MODO_AUTH
+        value: pessoal
+      - key: AMBIENTE
+        value: producao
+      - key: LIMITE_ALERTA_FALHAS
+        value: "3"
+      - key: LIMITE_CONFIANCA_BAIXA
+        value: "0.7"

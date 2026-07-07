@@ -95,6 +95,14 @@ A extracao roda via OpenRouter em vez de uma API de um unico provedor, o que per
 
 `pipeline.py` e `report_generator.py` gravam/leem em arquivos diferentes dependendo do `--modo`: modo demo usa `output/database/oc_agent_demo.db` e gera `output/report/relatorio_demo.html`; modo producao usa `output/database/oc_agent.db` e gera `output/report/relatorio.html`. Nenhum dos dois e o padrao "escondido" do outro - a escolha e sempre explicita via `--modo` (ou `--db`/`--saida` para sobrepor manualmente). O objetivo e simples: dado sintetico usado para demonstrar o projeto nunca deve aparecer misturado com dado real de producao no mesmo painel, na mesma consulta SQL ou no mesmo CSV exportado, o que evitaria uma pessoa de negocio tomar uma decisao real em cima de um numero fictício por engano.
 
+## 21. O painel nunca embute o PDF original, so um link para onde ele esta
+
+Uma versao anterior do relatorio HTML chegou a embutir a imagem da primeira pagina de cada PDF de demonstracao diretamente no painel (util para portfolio, ja que os PDFs sinteticos nao tem dado real). Essa ideia foi revertida deliberadamente antes de valer para producao: um PDF real de OC pode conter dado de saude do paciente (LGPD), entao ele nunca deve ficar embutido ou guardado dentro do relatorio HTML, mesmo que o painel em si so mostre campos comerciais. Em vez disso, `_link_documento()` (em `report_generator.py`) transforma o nome do arquivo de origem - na tabela de OCs recentes, na central de alertas e no log de auditoria - em um link clicavel, construido a partir de `URL_PASTA_ENTRADA_OC` no `.env`. Em producao, essa variavel aponta para a pasta no OneDrive/SharePoint da empresa (a mesma pasta de `PASTA_ENTRADA_OC`, so que pelo link web em vez do caminho local); abrir o link exige a autenticacao Microsoft de quem estiver acessando, o que e o comportamento esperado e desejado - o controle de acesso ao documento continua sendo o do OneDrive/SharePoint da empresa, nao algo que o painel HTML precisa reimplementar. Sem essa variavel configurada (como no modo demo, onde nao ha uma pasta real na nuvem), a coluna mostra so o nome do arquivo, sem link.
+
+## 22. Grants residuais do Supabase, revogados por precaucao
+
+Ao revisar o projeto Supabase ja em uso, foi encontrado que a propria plataforma concede `TRUNCATE`, `REFERENCES` e `TRIGGER` para os papeis `anon` e `authenticated` em toda tabela nova do schema `public`, por padrao - independente do toggle "Automatically expose new tables" (que so afeta `SELECT`/`INSERT`/`UPDATE`/`DELETE`). Ninguem consegue *ler* dado por esses privilegios via a API publica normal (o PostgREST, camada usada pelo site, nao expoe um verbo HTTP equivalente a `TRUNCATE`), mas em tese `TRUNCATE` permitiria apagar uma tabela inteira de uma vez, o que vai direto contra a regra central deste projeto de nunca excluir dado sem revisao humana. `sql/schema_postgres.sql` agora revoga esses tres privilegios de `anon`/`authenticated` em todas as tabelas, mantendo so o `SELECT` (e o `UPDATE` pontual em `ordens_compra`, para o fluxo de revisao) que sao realmente necessarios - defesa em profundidade, mesmo sem uma rota de ataque conhecida hoje. Confirmado por teste real contra a API publica (chave anonima) que a leitura de `dados_clinicos` continua bloqueada (`401`) antes e depois dessa limpeza.
+
 ## Resumo rapido
 
 | Situacao | O que o sistema faz | O que o sistema nunca faz |
@@ -110,3 +118,4 @@ A extracao roda via OpenRouter em vez de uma API de um unico provedor, o que per
 | Muitos arquivos pendentes de uma vez | Processa ate o limite, resto fica para depois | Estourar limite de taxa da API |
 | Coluna nova no schema | Migra a tabela existente (ALTER TABLE) | Perder dados do banco antigo |
 | Dado clinico (LGPD) | Isola em tabela propria | Expor em relatorio ou export comercial |
+| Referencia ao PDF de origem no relatorio | Link para a pasta (exige login Microsoft) | Embutir o PDF/imagem no painel |

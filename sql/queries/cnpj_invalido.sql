@@ -13,5 +13,5 @@ SELECT
 FROM ordens_compra oc
 JOIN clientes c ON c.id = oc.cliente_id
 JOIN fornecedores f ON f.id = oc.fornecedor_id
-WHERE oc.alerta_cnpj_invalido = 1
+WHERE oc.alerta_cnpj_invalido
 ORDER BY oc.data_extracao DESC;

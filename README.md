@@ -52,7 +52,14 @@ python src/pipeline.py --modo producao --pasta "C:\caminho\para\pasta_de_ocs"
 python src/report_generator.py --modo producao
 ```
 
-O painel e gerado em `output/report/relatorio_demo.html` (modo demo) ou `output/report/relatorio.html` (modo producao), lendo de `output/database/oc_agent_demo.db` ou `output/database/oc_agent.db` respectivamente - os dois nunca se misturam. A leitura e pensada de cima para baixo: indicadores executivos (incluindo quantas OCs tem algum alerta), os dois graficos de negocio lado a lado, a tabela de OCs recentes (com uma coluna de status OK/Revisar), uma central de alertas unica (duplicidade, valor divergente, baixa confianca, CNPJ invalido, cada um com seu selo colorido) e, por fim, uma secao de auditoria mais discreta com o log completo de extracoes. Nada na central de alertas e corrigido ou excluido automaticamente - ver [docs/boas_praticas_e_governanca.md](docs/boas_praticas_e_governanca.md).
+O painel e gerado em `output/report/relatorio_demo.html` (modo demo) ou `output/report/relatorio.html` (modo producao), lendo de `output/database/oc_agent_demo.db` ou `output/database/oc_agent.db` respectivamente - os dois nunca se misturam. E responsivo (layout, tabelas e botoes se adaptam de celular a monitor grande) e suporta tema claro/escuro automatico.
+
+O painel e organizado em abas (trocadas sem reload de pagina):
+
+- Analytics: indicadores executivos (incluindo quantas OCs tem algum alerta) e os dois graficos de negocio lado a lado.
+- Detalhada: os botoes de exportacao CSV, a tabela de OCs recentes (com uma coluna de status OK/Revisar e uma coluna "Documento"), a central de alertas unica (duplicidade, valor divergente, baixa confianca, CNPJ invalido, cada um com seu selo colorido) e a secao de auditoria mais discreta com o log completo de extracoes. Nada na central de alertas e corrigido ou excluido automaticamente - ver [docs/boas_praticas_e_governanca.md](docs/boas_praticas_e_governanca.md).
+
+Deliberadamente nao existe uma aba mostrando a imagem do PDF em si: em producao, esses documentos tem dado de saude do paciente (LGPD), entao nunca devem ficar embutidos neste painel. Em vez disso, a coluna "Documento" (presente na tabela de OCs recentes, na central de alertas e no log de auditoria) vira um link clicavel quando `URL_PASTA_ENTRADA_OC` esta configurada no `.env` - em producao, isso aponta para a pasta no OneDrive/SharePoint da empresa, entao abrir o link exige a autenticacao Microsoft de quem estiver acessando. Sem essa variavel configurada (como no modo demo), a coluna so mostra o nome do arquivo, sem link.
 
 ### Testando com PDFs reais (com dados clinicos redigidos)
 

@@ -1,80 +1,109 @@
 """
-Camada de persistencia: cria o banco SQLite (sql/schema.sql) e carrega
-objetos OrdemDeCompra validados (schema.py) nas tabelas correspondentes.
+Camada de persistencia: conecta ao Postgres do Supabase (sql/schema_postgres.sql)
+e carrega objetos OrdemDeCompra validados (schema.py) nas tabelas correspondentes.
+
+Ate a Fase 2 da migracao para backend real, este modulo usava SQLite local
+(sql/schema.sql). Agora conecta via psycopg a um projeto Supabase - dois
+projetos SEPARADOS para demo e producao (nunca o mesmo projeto, ver
+docs/arquitetura_webapp.md), selecionados por DATABASE_URL_DEMO /
+DATABASE_URL_PRODUCAO no .env.
+
+Diferente do SQLite, o schema Postgres NAO e aplicado automaticamente por
+este modulo: como CREATE POLICY (RLS) nao e idempotente, o schema e aplicado
+uma unica vez, manualmente, no SQL Editor do Supabase
+(sql/schema_postgres.sql). inicializar_schema() aqui so confirma que as
+tabelas esperadas existem, com um erro claro se nao existirem.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import shutil
-import sqlite3
-from datetime import datetime
-from pathlib import Path
+
+import psycopg
+from psycopg.rows import dict_row
 
 from schema import OrdemDeCompra
 from validadores import cnpj_valido
 
 logger = logging.getLogger(__name__)
 
-RAIZ_PROJETO = Path(__file__).resolve().parent.parent
-SCHEMA_SQL_PATH = RAIZ_PROJETO / "sql" / "schema.sql"
+# Dois projetos Supabase separados para nao misturar dado real com dado de
+# demonstracao (auth.users e RLS ficariam misturados num projeto so). demo e
+# o projeto criado na Fase 1; producao ainda nao existe ate a TI aprovar o
+# App Registration/infra da empresa - ver docs/arquitetura_webapp.md.
+#
+# Lidas como funcao (nao uma constante de modulo) de proposito: pipeline.py e
+# report_generator.py chamam load_dotenv() dentro de main()/no topo do
+# arquivo, mas so DEPOIS que "import database" ja rodou o corpo deste modulo.
+# Se DSN_DEMO/DSN_PADRAO fossem constantes fixadas na importacao, elas nunca
+# veriam o valor real do .env (mesmo bug ja corrigido antes em
+# llm_extractor.MODELO_PADRAO/modelo_configurado()).
+def dsn_demo() -> str:
+    return os.environ.get("DATABASE_URL_DEMO", "")
 
-# Dois bancos separados para nao misturar dado real com dado de demonstracao:
-# DB_PADRAO_PATH e o banco "de verdade" (modo producao), DB_DEMO_PATH e usado
-# quando o pipeline roda em modo demo (PDFs sinteticos). pipeline.py e
-# report_generator.py escolhem um ou outro automaticamente com base em --modo.
-DB_PADRAO_PATH = RAIZ_PROJETO / "output" / "database" / "oc_agent.db"
-DB_DEMO_PATH = RAIZ_PROJETO / "output" / "database" / "oc_agent_demo.db"
+
+def dsn_producao() -> str:
+    return os.environ.get("DATABASE_URL_PRODUCAO", "")
 
 LIMITE_CONFIANCA_BAIXA = float(os.environ.get("LIMITE_CONFIANCA_BAIXA", "0.7"))
 
-
-def conectar(db_path: str | Path = DB_PADRAO_PATH) -> sqlite3.Connection:
-    db_path = Path(db_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-# Colunas adicionadas em ordens_compra depois da criacao inicial do projeto.
-# SQLite nao migra schema automaticamente: "CREATE TABLE IF NOT EXISTS" nao
-# altera uma tabela ja existente. Sem isso, um banco criado por uma versao
-# mais antiga do codigo (inclusive de producao, com dados reais) quebraria
-# ao rodar contra o codigo novo. Cada entrada aqui e adicionada via ALTER
-# TABLE somente se ainda nao existir, preservando os dados ja gravados.
-COLUNAS_ADICIONAIS_ORDENS_COMPRA = {
-    "tipo_faturamento": "TEXT",
-    "status_extracao": "TEXT NOT NULL DEFAULT 'ok'",
-    "alerta_valor_divergente": "INTEGER NOT NULL DEFAULT 0",
-    "alerta_baixa_confianca": "INTEGER NOT NULL DEFAULT 0",
-    "alerta_cnpj_invalido": "INTEGER NOT NULL DEFAULT 0",
+# Tabelas que sql/schema_postgres.sql cria - conferido por inicializar_schema().
+TABELAS_ESPERADAS = {
+    "clientes",
+    "fornecedores",
+    "ordens_compra",
+    "itens_oc",
+    "dados_clinicos",
+    "log_extracao",
+    "perfis",
+    "log_acesso",
 }
 
 
-def _migrar_colunas_ausentes(conn: sqlite3.Connection) -> None:
-    colunas_existentes = {
-        row["name"] for row in conn.execute("PRAGMA table_info(ordens_compra)").fetchall()
-    }
-    for coluna, definicao in COLUNAS_ADICIONAIS_ORDENS_COMPRA.items():
-        if coluna not in colunas_existentes:
-            conn.execute(f"ALTER TABLE ordens_compra ADD COLUMN {coluna} {definicao}")
-            logger.info("Coluna '%s' adicionada a ordens_compra (migracao de schema)", coluna)
+def conectar(dsn: str) -> psycopg.Connection:
+    """Abre uma conexao com o Postgres do Supabase. dsn e a string de conexao
+    completa (DATABASE_URL_DEMO ou DATABASE_URL_PRODUCAO do .env) - use o
+    connection pooler (session pooler), nao a conexao direta, que exige IPv6
+    e costuma falhar em redes domesticas/corporativas comuns."""
+
+    if not dsn:
+        raise RuntimeError(
+            "String de conexao Postgres vazia. Configure DATABASE_URL_DEMO "
+            "(ou DATABASE_URL_PRODUCAO) no .env - ver docs/arquitetura_webapp.md."
+        )
+    # connect_timeout evita que uma conexao trave indefinidamente (ex: pool de
+    # conexoes do Supabase temporariamente sem slot livre) - falha rapido com
+    # um erro claro em vez de travar o pipeline/testes sem explicacao.
+    return psycopg.connect(dsn, row_factory=dict_row, autocommit=False, connect_timeout=15)
 
 
-def inicializar_schema(conn: sqlite3.Connection) -> None:
-    sql = SCHEMA_SQL_PATH.read_text(encoding="utf-8")
-    conn.executescript(sql)
-    _migrar_colunas_ausentes(conn)
-    conn.commit()
+def inicializar_schema(conn: psycopg.Connection) -> None:
+    """Confirma que o schema Postgres ja foi aplicado no projeto Supabase.
+
+    Diferente do antigo schema SQLite, este modulo NAO aplica o DDL
+    automaticamente - CREATE POLICY (RLS) nao e idempotente, entao
+    sql/schema_postgres.sql deve ser rodado manualmente, uma vez, no SQL
+    Editor do Supabase. Isso so verifica e avisa com um erro claro se alguma
+    tabela esperada estiver faltando."""
+
+    cur = conn.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+    )
+    existentes = {row["table_name"] for row in cur.fetchall()}
+    faltando = TABELAS_ESPERADAS - existentes
+    if faltando:
+        raise RuntimeError(
+            f"Tabelas ausentes no banco Postgres: {', '.join(sorted(faltando))}. "
+            "Rode sql/schema_postgres.sql no SQL Editor do projeto Supabase antes "
+            "de usar o pipeline."
+        )
 
 
-def _obter_ou_criar_cliente(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
+def _obter_ou_criar_cliente(conn: psycopg.Connection, oc: OrdemDeCompra) -> int:
     cliente = oc.cliente
     cur = conn.execute(
-        "SELECT id FROM clientes WHERE nome = ? AND IFNULL(cnpj, '') = IFNULL(?, '')",
+        "SELECT id FROM clientes WHERE nome = %s AND COALESCE(cnpj, '') = COALESCE(%s, '')",
         (cliente.nome, cliente.cnpj),
     )
     linha = cur.fetchone()
@@ -82,16 +111,16 @@ def _obter_ou_criar_cliente(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
         return linha["id"]
 
     cur = conn.execute(
-        "INSERT INTO clientes (nome, cnpj, cidade, uf) VALUES (?, ?, ?, ?)",
+        "INSERT INTO clientes (nome, cnpj, cidade, uf) VALUES (%s, %s, %s, %s) RETURNING id",
         (cliente.nome, cliente.cnpj, cliente.cidade, cliente.uf),
     )
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
-def _obter_ou_criar_fornecedor(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
+def _obter_ou_criar_fornecedor(conn: psycopg.Connection, oc: OrdemDeCompra) -> int:
     fornecedor = oc.fornecedor
     cur = conn.execute(
-        "SELECT id FROM fornecedores WHERE nome = ? AND IFNULL(cnpj, '') = IFNULL(?, '')",
+        "SELECT id FROM fornecedores WHERE nome = %s AND COALESCE(cnpj, '') = COALESCE(%s, '')",
         (fornecedor.nome, fornecedor.cnpj),
     )
     linha = cur.fetchone()
@@ -99,24 +128,26 @@ def _obter_ou_criar_fornecedor(conn: sqlite3.Connection, oc: OrdemDeCompra) -> i
         return linha["id"]
 
     cur = conn.execute(
-        "INSERT INTO fornecedores (nome, cnpj) VALUES (?, ?)",
+        "INSERT INTO fornecedores (nome, cnpj) VALUES (%s, %s) RETURNING id",
         (fornecedor.nome, fornecedor.cnpj),
     )
-    return cur.lastrowid
+    return cur.fetchone()["id"]
 
 
-def _marcar_possiveis_duplicatas(conn: sqlite3.Connection, ordem_compra_id: int, numero_oc: str, cliente_id: int) -> None:
+def _marcar_possiveis_duplicatas(
+    conn: psycopg.Connection, ordem_compra_id: int, numero_oc: str, cliente_id: int
+) -> None:
     """Sinaliza (nunca exclui) OCs com o mesmo numero e cliente salvas em
     arquivos diferentes - provavel duplicidade (ex: o mesmo PDF salvo duas
     vezes pela automacao com nomes de arquivo diferentes).
 
     A decisao de excluir ou nao uma duplicata fica sempre com um humano,
-    revisando a secao "Possiveis duplicidades" do relatorio: este pipeline
-    nunca apaga uma ordem_compra sozinho.
+    revisando a Central de alertas do painel: este pipeline nunca apaga uma
+    ordem_compra sozinho.
     """
 
     outras = conn.execute(
-        "SELECT id FROM ordens_compra WHERE numero_oc = ? AND cliente_id = ? AND id != ?",
+        "SELECT id FROM ordens_compra WHERE numero_oc = %s AND cliente_id = %s AND id != %s",
         (numero_oc, cliente_id, ordem_compra_id),
     ).fetchall()
 
@@ -124,7 +155,7 @@ def _marcar_possiveis_duplicatas(conn: sqlite3.Connection, ordem_compra_id: int,
         return
 
     ids_grupo = [ordem_compra_id] + [row["id"] for row in outras]
-    placeholders = ",".join("?" for _ in ids_grupo)
+    placeholders = ",".join(["%s"] * len(ids_grupo))
     conn.execute(
         f"UPDATE ordens_compra SET status_extracao = 'possivel_duplicata' WHERE id IN ({placeholders})",
         ids_grupo,
@@ -157,11 +188,11 @@ def _valor_diverge(oc: OrdemDeCompra) -> bool:
     return not (bate_sem_frete or bate_com_frete)
 
 
-def _marcar_divergencia_valor(conn: sqlite3.Connection, ordem_compra_id: int, oc: OrdemDeCompra) -> None:
+def _marcar_divergencia_valor(conn: psycopg.Connection, ordem_compra_id: int, oc: OrdemDeCompra) -> None:
     diverge = _valor_diverge(oc)
     conn.execute(
-        "UPDATE ordens_compra SET alerta_valor_divergente = ? WHERE id = ?",
-        (1 if diverge else 0, ordem_compra_id),
+        "UPDATE ordens_compra SET alerta_valor_divergente = %s WHERE id = %s",
+        (diverge, ordem_compra_id),
     )
     if diverge:
         soma_itens = sum(item.valor_total for item in oc.itens)
@@ -173,14 +204,14 @@ def _marcar_divergencia_valor(conn: sqlite3.Connection, ordem_compra_id: int, oc
         )
 
 
-def _marcar_baixa_confianca(conn: sqlite3.Connection, ordem_compra_id: int, oc: OrdemDeCompra) -> None:
+def _marcar_baixa_confianca(conn: psycopg.Connection, ordem_compra_id: int, oc: OrdemDeCompra) -> None:
     """Sinaliza quando o proprio modelo relatou confianca baixa na extracao
     (ver o criterio explicito em PROMPT_SISTEMA, em llm_extractor.py)."""
 
     baixa = oc.confianca_extracao is not None and oc.confianca_extracao < LIMITE_CONFIANCA_BAIXA
     conn.execute(
-        "UPDATE ordens_compra SET alerta_baixa_confianca = ? WHERE id = ?",
-        (1 if baixa else 0, ordem_compra_id),
+        "UPDATE ordens_compra SET alerta_baixa_confianca = %s WHERE id = %s",
+        (baixa, ordem_compra_id),
     )
     if baixa:
         logger.warning(
@@ -191,15 +222,15 @@ def _marcar_baixa_confianca(conn: sqlite3.Connection, ordem_compra_id: int, oc: 
         )
 
 
-def _marcar_cnpj_invalido(conn: sqlite3.Connection, ordem_compra_id: int, oc: OrdemDeCompra) -> None:
+def _marcar_cnpj_invalido(conn: psycopg.Connection, ordem_compra_id: int, oc: OrdemDeCompra) -> None:
     """Confere o digito verificador do CNPJ do cliente e do fornecedor
     (validadores.cnpj_valido - verificacao deterministica, independente do
     LLM). CNPJ ausente (None) nao e sinalizado, so CNPJ presente e invalido."""
 
     invalido = not cnpj_valido(oc.cliente.cnpj) or not cnpj_valido(oc.fornecedor.cnpj)
     conn.execute(
-        "UPDATE ordens_compra SET alerta_cnpj_invalido = ? WHERE id = ?",
-        (1 if invalido else 0, ordem_compra_id),
+        "UPDATE ordens_compra SET alerta_cnpj_invalido = %s WHERE id = %s",
+        (invalido, ordem_compra_id),
     )
     if invalido:
         logger.warning(
@@ -210,7 +241,7 @@ def _marcar_cnpj_invalido(conn: sqlite3.Connection, ordem_compra_id: int, oc: Or
         )
 
 
-def salvar_ordem_de_compra(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
+def salvar_ordem_de_compra(conn: psycopg.Connection, oc: OrdemDeCompra) -> int:
     """Insere uma OrdemDeCompra validada no banco (idempotente por numero_oc + arquivo_origem)."""
 
     cliente_id = _obter_ou_criar_cliente(conn, oc)
@@ -222,17 +253,18 @@ def salvar_ordem_de_compra(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
             numero_oc, data_emissao, cliente_id, fornecedor_id,
             condicao_pagamento_dias, valor_frete, valor_total, tipo_faturamento,
             layout_origem, arquivo_origem, confianca_extracao
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (numero_oc, arquivo_origem) DO UPDATE SET
-            data_emissao = excluded.data_emissao,
-            cliente_id = excluded.cliente_id,
-            fornecedor_id = excluded.fornecedor_id,
-            condicao_pagamento_dias = excluded.condicao_pagamento_dias,
-            valor_frete = excluded.valor_frete,
-            valor_total = excluded.valor_total,
-            tipo_faturamento = excluded.tipo_faturamento,
-            layout_origem = excluded.layout_origem,
-            confianca_extracao = excluded.confianca_extracao
+            data_emissao = EXCLUDED.data_emissao,
+            cliente_id = EXCLUDED.cliente_id,
+            fornecedor_id = EXCLUDED.fornecedor_id,
+            condicao_pagamento_dias = EXCLUDED.condicao_pagamento_dias,
+            valor_frete = EXCLUDED.valor_frete,
+            valor_total = EXCLUDED.valor_total,
+            tipo_faturamento = EXCLUDED.tipo_faturamento,
+            layout_origem = EXCLUDED.layout_origem,
+            confianca_extracao = EXCLUDED.confianca_extracao
+        RETURNING id
         """,
         (
             oc.numero_oc,
@@ -248,23 +280,16 @@ def salvar_ordem_de_compra(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
             oc.confianca_extracao,
         ),
     )
+    ordem_compra_id = cur.fetchone()["id"]
 
-    if cur.lastrowid:
-        ordem_compra_id = cur.lastrowid
-    else:
-        ordem_compra_id = conn.execute(
-            "SELECT id FROM ordens_compra WHERE numero_oc = ? AND arquivo_origem = ?",
-            (oc.numero_oc, oc.arquivo_origem),
-        ).fetchone()["id"]
-
-    conn.execute("DELETE FROM itens_oc WHERE ordem_compra_id = ?", (ordem_compra_id,))
+    conn.execute("DELETE FROM itens_oc WHERE ordem_compra_id = %s", (ordem_compra_id,))
     for item in oc.itens:
         conn.execute(
             """
             INSERT INTO itens_oc (
                 ordem_compra_id, codigo_produto, descricao, quantidade,
                 unidade, valor_unitario, valor_total, lote, referencia
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 ordem_compra_id,
@@ -286,15 +311,15 @@ def salvar_ordem_de_compra(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
             INSERT INTO dados_clinicos (
                 ordem_compra_id, paciente, convenio, carteirinha,
                 cirurgiao, data_realizacao, aviso_cirurgia, setor
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (ordem_compra_id) DO UPDATE SET
-                paciente = excluded.paciente,
-                convenio = excluded.convenio,
-                carteirinha = excluded.carteirinha,
-                cirurgiao = excluded.cirurgiao,
-                data_realizacao = excluded.data_realizacao,
-                aviso_cirurgia = excluded.aviso_cirurgia,
-                setor = excluded.setor
+                paciente = EXCLUDED.paciente,
+                convenio = EXCLUDED.convenio,
+                carteirinha = EXCLUDED.carteirinha,
+                cirurgiao = EXCLUDED.cirurgiao,
+                data_realizacao = EXCLUDED.data_realizacao,
+                aviso_cirurgia = EXCLUDED.aviso_cirurgia,
+                setor = EXCLUDED.setor
             """,
             (
                 ordem_compra_id,
@@ -318,51 +343,25 @@ def salvar_ordem_de_compra(conn: sqlite3.Connection, oc: OrdemDeCompra) -> int:
 
 
 def registrar_log_extracao(
-    conn: sqlite3.Connection,
+    conn: psycopg.Connection,
     arquivo: str,
     status: str,
     confianca: float | None = None,
     erro: str | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO log_extracao (arquivo, status, confianca, erro) VALUES (?, ?, ?, ?)",
+        "INSERT INTO log_extracao (arquivo, status, confianca, erro) VALUES (%s, %s, %s, %s)",
         (arquivo, status, confianca, erro),
     )
     conn.commit()
 
 
-def contar_falhas_arquivo(conn: sqlite3.Connection, arquivo: str) -> int:
+def contar_falhas_arquivo(conn: psycopg.Connection, arquivo: str) -> int:
     """Conta quantas tentativas de extracao desse arquivo falharam ate agora
     (usado para decidir se um arquivo deve ir para a pasta de quarentena)."""
 
     linha = conn.execute(
-        "SELECT COUNT(*) AS n FROM log_extracao WHERE arquivo = ? AND status LIKE 'erro%'",
-        (arquivo,),
+        "SELECT COUNT(*) AS n FROM log_extracao WHERE arquivo = %s AND status LIKE %s",
+        (arquivo, "erro%"),
     ).fetchone()
     return linha["n"]
-
-
-def fazer_backup(db_path: str | Path, manter_ultimos: int = 20) -> Path | None:
-    """Copia o banco para uma subpasta 'backups/' com timestamp antes de uma
-    execucao do pipeline, mantendo apenas os N backups mais recentes.
-
-    Nao faz nada (retorna None) se o banco ainda nao existir - nao ha o que
-    fazer backup na primeira execucao."""
-
-    db_path = Path(db_path)
-    if not db_path.exists():
-        return None
-
-    pasta_backup = db_path.parent / "backups"
-    pasta_backup.mkdir(exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    destino = pasta_backup / f"{db_path.stem}_{timestamp}{db_path.suffix}"
-    shutil.copy2(db_path, destino)
-
-    backups = sorted(pasta_backup.glob(f"{db_path.stem}_*{db_path.suffix}"))
-    for backup_antigo in backups[:-manter_ultimos]:
-        backup_antigo.unlink()
-
-    logger.info("Backup do banco criado em %s", destino)
-    return destino

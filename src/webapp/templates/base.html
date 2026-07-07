@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Painel de Ordens de Compra</title>
+  <style>{{ css }}</style>
+  <style>
+    /* .menu-item em estilo_painel.py foi desenhado para <button> (relatorio
+       HTML estatico, trocado via JS); aqui viram links de verdade (<a>) entre
+       rotas do FastAPI - so reseta o sublinhado padrao do navegador. */
+    a.menu-item { text-decoration: none; display: inline-block; }
+  </style>
+</head>
+<body>
+<div class="container">
+<div class="cabecalho">
+  <p class="eyebrow">MDR / Mederi &middot; extraido automaticamente via oc-agent-automation</p>
+  <h1>Painel de Ordens de Compra</h1>
+</div>
+
+<div class="menu-abas" style="justify-content: space-between; align-items: center;">
+  <div style="display:flex;">
+    <a class="menu-item {% if aba_ativa == 'analytics' %}menu-item-ativo{% endif %}" href="/">Analytics</a>
+    <a class="menu-item {% if aba_ativa == 'detalhada' %}menu-item-ativo{% endif %}" href="/detalhada">Detalhada</a>
+  </div>
+  {% if usuario_email %}
+  <div style="font-size: 12px; color: var(--muted); white-space: nowrap;">
+    {{ usuario_email }} &middot; <a class="menu-item" style="margin-right:0; padding:0;" href="/logout">Sair</a>
+  </div>
+  {% endif %}
+</div>
+
+{% block content %}{% endblock %}
+
+</div>
+</body>
+</html>

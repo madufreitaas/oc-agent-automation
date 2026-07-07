@@ -1,9 +1,6 @@
 """
-Exporta o resultado de uma consulta SQL do banco de OCs para um arquivo CSV.
-
-Usa apenas sqlite3 e csv da biblioteca padrao do Python, sem depender do
-cliente de linha de comando sqlite3 (que nao vem instalado por padrao no
-Windows).
+Exporta o resultado de uma consulta SQL do banco de OCs (Postgres/Supabase)
+para um arquivo CSV, usando so csv da biblioteca padrao do Python.
 
 Uso:
     python src/export_csv.py
@@ -17,6 +14,8 @@ import csv
 import io
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 import database
 
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
@@ -24,22 +23,22 @@ QUERY_PADRAO = RAIZ_PROJETO / "sql" / "queries" / "exportar_csv_ordens_compra.sq
 SAIDA_PADRAO = RAIZ_PROJETO / "output" / "csv" / "ordens_compra.csv"
 
 
-def gerar_csv_string(
-    caminho_query: str | Path,
-    db_path: str | Path = database.DB_PADRAO_PATH,
-) -> str:
+def gerar_csv_string(caminho_query: str | Path, dsn: str) -> str:
     """Roda a consulta SQL informada e retorna o resultado como texto CSV (com cabecalho).
 
     Reaproveitada tanto por exportar_csv (grava em arquivo) quanto por
     report_generator.py (embute o CSV nos botoes de download do relatorio HTML).
     """
 
-    conn = database.conectar(db_path)
+    conn = database.conectar(dsn)
     sql = Path(caminho_query).read_text(encoding="utf-8")
     cursor = conn.execute(sql)
 
     colunas = [descricao[0] for descricao in cursor.description]
-    linhas = cursor.fetchall()
+    # cursor.fetchall() devolve dicts (row_factory=dict_row, ver database.conectar) -
+    # csv.writer.writerows precisa de sequencias na ordem das colunas, nao dicts
+    # (iterar um dict devolveria as chaves, nao os valores).
+    linhas = [[row[coluna] for coluna in colunas] for row in cursor.fetchall()]
     conn.close()
 
     buffer = io.StringIO()
@@ -52,11 +51,11 @@ def gerar_csv_string(
 def exportar_csv(
     caminho_query: str | Path = QUERY_PADRAO,
     caminho_saida: str | Path = SAIDA_PADRAO,
-    db_path: str | Path = database.DB_PADRAO_PATH,
+    dsn: str = "",
 ) -> Path:
     """Roda a consulta SQL informada e grava o resultado como arquivo CSV."""
 
-    texto_csv = gerar_csv_string(caminho_query, db_path)
+    texto_csv = gerar_csv_string(caminho_query, dsn)
 
     caminho_saida = Path(caminho_saida)
     caminho_saida.parent.mkdir(parents=True, exist_ok=True)
@@ -66,13 +65,19 @@ def exportar_csv(
 
 
 def main() -> None:
+    load_dotenv()
+
     parser = argparse.ArgumentParser(description="Exporta uma consulta SQL do banco de OCs para CSV")
     parser.add_argument("--query", default=str(QUERY_PADRAO), help="Caminho do arquivo .sql")
     parser.add_argument("--saida", default=str(SAIDA_PADRAO), help="Caminho do CSV de saida")
-    parser.add_argument("--db", default=str(database.DB_PADRAO_PATH), help="Caminho do banco SQLite")
+    parser.add_argument(
+        "--dsn",
+        default=None,
+        help="String de conexao Postgres. Se omitido, usa DATABASE_URL_DEMO do .env.",
+    )
     args = parser.parse_args()
 
-    caminho = exportar_csv(args.query, args.saida, args.db)
+    caminho = exportar_csv(args.query, args.saida, args.dsn or database.dsn_demo())
     print(f"CSV gerado em {caminho}")
 
 

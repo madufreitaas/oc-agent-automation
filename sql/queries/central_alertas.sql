@@ -11,6 +11,9 @@
 SELECT
     'Duplicidade' AS tipo,
     oc.numero_oc,
+    oc.id AS ordem_compra_id,
+    oc.data_emissao,
+    oc.revisado,
     c.nome AS cliente,
     oc.arquivo_origem,
     'OC com mesmo numero e cliente salva em outro arquivo' AS detalhe,
@@ -24,32 +27,41 @@ UNION ALL
 SELECT
     'Valor divergente',
     oc.numero_oc,
+    oc.id AS ordem_compra_id,
+    oc.data_emissao,
+    oc.revisado,
     c.nome,
     oc.arquivo_origem,
     'Soma dos itens nao bate com o valor total declarado',
     oc.data_extracao
 FROM ordens_compra oc
 JOIN clientes c ON c.id = oc.cliente_id
-WHERE oc.alerta_valor_divergente = 1
+WHERE oc.alerta_valor_divergente
 
 UNION ALL
 
 SELECT
     'Baixa confianca',
     oc.numero_oc,
+    oc.id AS ordem_compra_id,
+    oc.data_emissao,
+    oc.revisado,
     c.nome,
     oc.arquivo_origem,
-    'Confianca relatada pelo modelo: ' || ROUND(oc.confianca_extracao, 2),
+    'Confianca relatada pelo modelo: ' || ROUND(oc.confianca_extracao::numeric, 2),
     oc.data_extracao
 FROM ordens_compra oc
 JOIN clientes c ON c.id = oc.cliente_id
-WHERE oc.alerta_baixa_confianca = 1
+WHERE oc.alerta_baixa_confianca
 
 UNION ALL
 
 SELECT
     'CNPJ invalido',
     oc.numero_oc,
+    oc.id AS ordem_compra_id,
+    oc.data_emissao,
+    oc.revisado,
     c.nome,
     oc.arquivo_origem,
     'Cliente: ' || COALESCE(c.cnpj, '-') || '  /  Fornecedor: ' || COALESCE(f.cnpj, '-'),
@@ -57,6 +69,6 @@ SELECT
 FROM ordens_compra oc
 JOIN clientes c ON c.id = oc.cliente_id
 JOIN fornecedores f ON f.id = oc.fornecedor_id
-WHERE oc.alerta_cnpj_invalido = 1
+WHERE oc.alerta_cnpj_invalido
 
 ORDER BY data_extracao DESC;
