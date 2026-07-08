@@ -22,6 +22,8 @@ flowchart LR
 
 Detalhes de cada componente em [docs/architecture.md](docs/architecture.md). Modelo de dados completo em [docs/data_model.md](docs/data_model.md). Regras de governanca e boas praticas (o que o sistema sinaliza, o que ele nunca faz automaticamente, e por que) em [docs/boas_praticas_e_governanca.md](docs/boas_praticas_e_governanca.md).
 
+Alem do relatorio HTML estatico (gerado pelo pipeline acima), o projeto tem um site com backend real (Postgres/Supabase, login Microsoft, controle de acesso por papel e fluxo de revisao humana das OCs sinalizadas) em `src/webapp/`. Passo a passo completo (Azure, Supabase, RLS, deploy) em [docs/arquitetura_webapp.md](docs/arquitetura_webapp.md).
+
 ## Modo demo vs producao
 
 O repositorio roda por padrao em modo demo, usando quatro PDFs sinteticos incluidos em `demo_data/pdfs/` (dados de hospitais, CNPJs e pacientes 100% ficticios, gerados por `demo_data/generate_demo_pdfs.py`). Isso permite ver o pipeline completo funcionando sem nenhuma credencial de infraestrutura.
