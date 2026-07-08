@@ -1,5 +1,8 @@
 """
-Rotas de leitura do painel: GET / (Analytics) e GET /detalhada. Fase 3 da
+Rotas de leitura do painel: GET / (Analytics), GET /detalhada (Ordens de
+Compra), GET /alertas (Central de Alertas) e GET /auditoria (Auditoria e
+Governanca) - essas 3 ultimas eram uma unica pagina ("Detalhada") ate serem
+separadas para dar mais espaco/foco a cada uma na navegacao. Fase 3 da
 migracao para backend real - ver o aviso de seguranca/RLS temporario no
 docstring de webapp/main.py.
 
@@ -43,7 +46,7 @@ LIMITE_ALERTA_FALHAS_RECENTES = int(os.environ.get("LIMITE_ALERTA_FALHAS", "3"))
 def _int_ou_none(valor: Optional[str], *, minimo: int, maximo: int) -> Optional[int]:
     """Converte um parametro de query de filtro (string, possivelmente vazia
     ou ausente) para int, ou None se estiver em branco/invalido/fora da
-    faixa - trata o campo em branco do formulario (detalhada.html) como
+    faixa - trata o campo em branco do formulario (_filtros.html) como
     'sem filtro', em vez de 422."""
 
     if valor is None or valor.strip() == "":
@@ -96,6 +99,42 @@ def _condicoes_filtro(
     return condicoes, parametros
 
 
+def _usuario_pode_revisar(conn, sessao) -> bool:
+    """So decide se mostra o botao 'Marcar revisado' (Ordens de Compra e
+    Central de Alertas usam as duas) - a trava de seguranca real e a policy
+    de RLS 'revisor_ou_admin_pode_revisar', verificada de verdade em
+    webapp/rotas/revisao.py via exige_papel (essa sim usa o client
+    autenticado com o token do usuario, sujeito a RLS)."""
+
+    linha_papel = conn.execute(
+        "SELECT papel FROM perfis WHERE id = %s", (str(sessao.usuario.id),)
+    ).fetchone()
+    return (linha_papel["papel"] if linha_papel else "leitor") in ("admin", "revisor")
+
+
+def _anos_disponiveis(conn) -> list[str]:
+    return [
+        row["ano"]
+        for row in conn.execute(
+            "SELECT DISTINCT left(data_emissao, 4) AS ano FROM ordens_compra "
+            "WHERE data_emissao IS NOT NULL ORDER BY 1 DESC"
+        ).fetchall()
+    ]
+
+
+def _banner_falhas(conn) -> str:
+    falhas_recentes = conn.execute(
+        "SELECT COUNT(*) AS n FROM log_extracao WHERE status LIKE %s AND timestamp >= now() - interval '1 day'",
+        ("erro%",),
+    ).fetchone()["n"]
+    if falhas_recentes < LIMITE_ALERTA_FALHAS_RECENTES:
+        return ""
+    return (
+        f"{falhas_recentes} falha(s) de extracao nas ultimas 24 horas "
+        f"(limite de alerta: {LIMITE_ALERTA_FALHAS_RECENTES})."
+    )
+
+
 @router.get("/")
 def analytics(request: Request, sessao=Depends(exige_login)):
     with pool.obter_conexao() as conn:
@@ -136,16 +175,18 @@ def analytics(request: Request, sessao=Depends(exige_login)):
     )
 
 
+# Optional[str] (nao int) de proposito nos 3 parametros de filtro abaixo: os
+# <select>/<input> do formulario de filtro (_filtros.html) mandam "" (string
+# vazia) quando o campo fica em branco - FastAPI rejeitaria isso com 422 se o
+# tipo fosse Optional[int] direto, ja que "" nao e um inteiro valido.
+# _int_ou_none trata "" como "sem filtro" (None), igual a nao mandar o parametro.
+
+
 @router.get("/detalhada")
-def detalhada(
+def ordens_compra(
     request: Request,
     sessao=Depends(exige_login),
     status: str = Query("todos", pattern="^(todos|pendente|revisado)$"),
-    # Optional[str] (nao int) de proposito: os <select>/<input> do formulario
-    # de filtro (detalhada.html) mandam "" (string vazia) quando o campo fica
-    # em branco - FastAPI rejeitaria isso com 422 se o tipo fosse Optional[int]
-    # direto, ja que "" nao e um inteiro valido. _int_ou_none trata "" como
-    # "sem filtro" (None), igual a nao mandar o parametro.
     ano: Optional[str] = Query(None),
     mes: Optional[str] = Query(None),
     dia: Optional[str] = Query(None),
@@ -156,25 +197,9 @@ def detalhada(
     ano, mes, dia = ano_int, mes_int, dia_int
 
     with pool.obter_conexao() as conn:
-        # Le o papel direto pela conexao ja aberta (confiavel, mesmo caminho
-        # do restante desta rota) em vez de uma segunda chamada de rede via
-        # PostgREST/Supabase Auth - aqui e so para decidir se mostra o botao
-        # "Marcar revisado", nao e a trava de seguranca. A trava real e a
-        # policy de RLS "revisor_ou_admin_pode_revisar", verificada de
-        # verdade em webapp/rotas/revisao.py via exige_papel (essa sim usa o
-        # client autenticado com o token do usuario, sujeito a RLS).
-        linha_papel = conn.execute(
-            "SELECT papel FROM perfis WHERE id = %s", (str(sessao.usuario.id),)
-        ).fetchone()
-        pode_revisar = (linha_papel["papel"] if linha_papel else "leitor") in ("admin", "revisor")
-
-        anos_disponiveis = [
-            row["ano"]
-            for row in conn.execute(
-                "SELECT DISTINCT left(data_emissao, 4) AS ano FROM ordens_compra "
-                "WHERE data_emissao IS NOT NULL ORDER BY 1 DESC"
-            ).fetchall()
-        ]
+        pode_revisar = _usuario_pode_revisar(conn, sessao)
+        anos_disponiveis = _anos_disponiveis(conn)
+        banner_falhas = _banner_falhas(conn)
 
         condicoes_oc, params_oc = _condicoes_filtro(status, ano, mes, dia, "oc")
         where_oc = ("WHERE " + " AND ".join(condicoes_oc)) if condicoes_oc else ""
@@ -191,6 +216,45 @@ def detalhada(
             params_oc,
         ).fetchall()
 
+    return templates.TemplateResponse(
+        request,
+        "ordens.html",
+        {
+            "usuario_email": sessao.usuario.email,
+            "pode_revisar": pode_revisar,
+            "ocs_recentes": ocs_recentes,
+            "banner_falhas": banner_falhas,
+            "fmt_moeda": fmt_moeda,
+            "status_oc": status_oc,
+            "link_documento": link_documento,
+            "filtro_status": status,
+            "filtro_ano": ano,
+            "filtro_mes": mes,
+            "filtro_dia": dia,
+            "anos_disponiveis": anos_disponiveis,
+        },
+    )
+
+
+@router.get("/alertas")
+def central_alertas_view(
+    request: Request,
+    sessao=Depends(exige_login),
+    status: str = Query("todos", pattern="^(todos|pendente|revisado)$"),
+    ano: Optional[str] = Query(None),
+    mes: Optional[str] = Query(None),
+    dia: Optional[str] = Query(None),
+):
+    ano_int = _int_ou_none(ano, minimo=1900, maximo=2999)
+    mes_int = _int_ou_none(mes, minimo=1, maximo=12)
+    dia_int = _int_ou_none(dia, minimo=1, maximo=31)
+    ano, mes, dia = ano_int, mes_int, dia_int
+
+    with pool.obter_conexao() as conn:
+        pode_revisar = _usuario_pode_revisar(conn, sessao)
+        anos_disponiveis = _anos_disponiveis(conn)
+        banner_falhas = _banner_falhas(conn)
+
         condicoes_alertas, params_alertas = _condicoes_filtro(status, ano, mes, dia, "t")
         where_alertas = ("WHERE " + " AND ".join(condicoes_alertas)) if condicoes_alertas else ""
         sql_central_alertas = QUERY_CENTRAL_ALERTAS.read_text(encoding="utf-8").rstrip().rstrip(";")
@@ -199,35 +263,15 @@ def detalhada(
             params_alertas,
         ).fetchall()
 
-        log_extracao = conn.execute(
-            "SELECT arquivo, timestamp, status, confianca, erro FROM log_extracao ORDER BY timestamp DESC LIMIT 30"
-        ).fetchall()
-
-        falhas_recentes = conn.execute(
-            "SELECT COUNT(*) AS n FROM log_extracao WHERE status LIKE %s AND timestamp >= now() - interval '1 day'",
-            ("erro%",),
-        ).fetchone()["n"]
-
-    banner_falhas = (
-        f"{falhas_recentes} falha(s) de extracao nas ultimas 24 horas "
-        f"(limite de alerta: {LIMITE_ALERTA_FALHAS_RECENTES}). Veja a secao de auditoria no final da pagina."
-        if falhas_recentes >= LIMITE_ALERTA_FALHAS_RECENTES
-        else ""
-    )
-
     return templates.TemplateResponse(
         request,
-        "detalhada.html",
+        "alertas.html",
         {
             "usuario_email": sessao.usuario.email,
             "pode_revisar": pode_revisar,
-            "ocs_recentes": ocs_recentes,
             "central_alertas": central_alertas,
-            "log_extracao": log_extracao,
             "banner_falhas": banner_falhas,
-            "fmt_moeda": fmt_moeda,
             "fmt_data": fmt_data,
-            "status_oc": status_oc,
             "badge_tipo_alerta": badge_tipo_alerta,
             "link_documento": link_documento,
             "filtro_status": status,
@@ -235,5 +279,26 @@ def detalhada(
             "filtro_mes": mes,
             "filtro_dia": dia,
             "anos_disponiveis": anos_disponiveis,
+        },
+    )
+
+
+@router.get("/auditoria")
+def auditoria(request: Request, sessao=Depends(exige_login)):
+    with pool.obter_conexao() as conn:
+        banner_falhas = _banner_falhas(conn)
+        log_extracao = conn.execute(
+            "SELECT arquivo, timestamp, status, confianca, erro FROM log_extracao ORDER BY timestamp DESC LIMIT 30"
+        ).fetchall()
+
+    return templates.TemplateResponse(
+        request,
+        "auditoria.html",
+        {
+            "usuario_email": sessao.usuario.email,
+            "log_extracao": log_extracao,
+            "banner_falhas": banner_falhas,
+            "fmt_data": fmt_data,
+            "link_documento": link_documento,
         },
     )

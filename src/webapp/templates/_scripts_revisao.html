@@ -1,0 +1,38 @@
+{% if pode_revisar %}
+<script>
+async function revisarOC(id, botao) {
+  botao.disabled = true;
+  try {
+    const resposta = await fetch(`/ocs/${id}/revisar`, { method: 'POST' });
+    if (!resposta.ok) {
+      botao.disabled = false;
+      alert('Nao foi possivel marcar como revisado (' + resposta.status + ').');
+      return;
+    }
+    // O mesmo id pode aparecer tanto em Ordens de Compra quanto na Central de
+    // alertas (uma linha por tipo de alerta) - recarregar a pagina atual
+    // (preservando os filtros na URL) e mais simples e confiavel do que
+    // atualizar as duas tabelas na mao, e cada uma agora e uma pagina
+    // separada mesmo.
+    window.location.reload();
+  } catch (erro) {
+    botao.disabled = false;
+    alert('Falha de rede ao marcar como revisado.');
+  }
+}
+
+async function desfazerRevisaoOC(id, link) {
+  if (!confirm('Desfazer a revisao desta OC? Ela volta a aparecer como pendente.')) return;
+  try {
+    const resposta = await fetch(`/ocs/${id}/desfazer-revisao`, { method: 'POST' });
+    if (!resposta.ok) {
+      alert('Nao foi possivel desfazer a revisao (' + resposta.status + ').');
+      return;
+    }
+    window.location.reload();
+  } catch (erro) {
+    alert('Falha de rede ao desfazer a revisao.');
+  }
+}
+</script>
+{% endif %}
