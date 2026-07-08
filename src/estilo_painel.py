@@ -60,9 +60,15 @@ h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em
   color: var(--muted); margin: 0 0 6px;
 }
 .grid-cards {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px; margin-bottom: 28px;
+  display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 28px;
 }
+.grid-cards > .card { flex: 1 1 200px; }
+/* Modificadores de largura relativa dentro de .grid-cards - o flex-grow (1o
+   numero) decide quanto espaco sobrando cada card recebe, nao um grid de
+   colunas iguais, entao um card de numero curto (ex: contagem) pode ficar
+   bem menor que um de valor monetario, sem quebrar o wrap responsivo. */
+.grid-cards > .card-kpi-compacto { flex: 0.6 1 140px; }
+.grid-cards > .card-kpi-largo { flex: 1.6 1 240px; }
 .grid-2col {
   display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
 }
@@ -76,7 +82,7 @@ h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em
 .card .rotulo { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .card .valor {
   font-size: 27px; font-weight: 700; font-variant-numeric: proportional-nums;
-  letter-spacing: -0.01em; word-break: break-word;
+  letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 @media (max-width: 480px) {
   .card .valor { font-size: 22px; }

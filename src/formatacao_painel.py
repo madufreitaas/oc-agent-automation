@@ -25,7 +25,9 @@ TIPOS_ALERTA_CRITICOS = {"CNPJ invalido"}
 def fmt_moeda(valor: float | None) -> str:
     if valor is None:
         return "-"
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    # \xa0 (espaco inquebravel) entre "R$" e o numero - evita a quebra de
+    # linha feia bem ali dentro dos cards de KPI (ver .card .valor).
+    return f"R$\xa0{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def fmt_data(valor) -> str:
