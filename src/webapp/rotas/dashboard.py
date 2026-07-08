@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from formatacao_painel import (
     badge_tipo_alerta,
+    badge_tipo_faturamento,
     barras_html,
     calcular_indicadores,
     fmt_data,
@@ -37,6 +38,14 @@ router = APIRouter()
 
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent.parent.parent
 QUERY_CENTRAL_ALERTAS = RAIZ_PROJETO / "sql" / "queries" / "central_alertas.sql"
+
+# Mesma expressao usada em report_generator.py para a coluna tem_alerta - uma
+# unica fonte de verdade do que conta como "precisa revisar" (duplicidade,
+# valor divergente, baixa confianca ou CNPJ invalido).
+TEM_ALERTA_SQL = (
+    "(oc.status_extracao = 'possivel_duplicata' OR oc.alerta_valor_divergente "
+    "OR oc.alerta_baixa_confianca OR oc.alerta_cnpj_invalido)"
+)
 
 # Mesmo limite usado em pipeline.py/report_generator.py para o banner de
 # falhas recentes de extracao.
@@ -60,31 +69,25 @@ def _int_ou_none(valor: Optional[str], *, minimo: int, maximo: int) -> Optional[
     return numero
 
 
-def _condicoes_filtro(
-    status: str, ano: Optional[int], mes: Optional[int], dia: Optional[int], prefixo: str
+def _condicoes_data(
+    ano: Optional[int], mes: Optional[int], dia: Optional[int], prefixo: str
 ) -> tuple[list[str], list[str]]:
-    """Monta as condicoes SQL (parametrizadas com %s, nunca com o valor
-    embutido na string) para os filtros da aba Detalhada: status de revisao
-    (pendente/revisado/todos) e data de emissao da NF (ano/mes/dia, cada um
-    opcional e combinavel independentemente - ex: so mes, sem ano, filtra
-    esse mes em qualquer ano).
+    """Condicoes SQL (parametrizadas com %s) de data de emissao da NF -
+    ano/mes/dia, cada um opcional e combinavel independentemente (ex: so mes,
+    sem ano, filtra esse mes em qualquer ano). Usado tanto por Ordens de
+    Compra quanto por Central de Alertas.
 
     data_emissao e uma coluna text no formato ISO 'AAAA-MM-DD' (gravada por
     oc.data_emissao.isoformat() em database.py), entao left()/substring()
     bastam - nao precisa de CAST para date.
 
-    prefixo e o alias da tabela/subquery de onde vem revisado/data_emissao
-    ("oc" na consulta de ordens_compra, "t" quando central_alertas.sql e
-    envolvida numa subquery para poder ser filtrada aqui.
+    prefixo e o alias da tabela/subquery de onde vem data_emissao ("oc" na
+    consulta de ordens_compra, "t" quando central_alertas.sql e envolvida
+    numa subquery para poder ser filtrada aqui.
     """
 
     condicoes: list[str] = []
     parametros: list[str] = []
-
-    if status == "pendente":
-        condicoes.append(f"{prefixo}.revisado = false")
-    elif status == "revisado":
-        condicoes.append(f"{prefixo}.revisado = true")
 
     if ano:
         condicoes.append(f"left({prefixo}.data_emissao, 4) = %s")
@@ -95,6 +98,62 @@ def _condicoes_filtro(
     if dia:
         condicoes.append(f"substring({prefixo}.data_emissao from 9 for 2) = %s")
         parametros.append(f"{dia:02d}")
+
+    return condicoes, parametros
+
+
+def _condicoes_filtro(
+    status: str, ano: Optional[int], mes: Optional[int], dia: Optional[int], prefixo: str
+) -> tuple[list[str], list[str]]:
+    """Condicoes de status de revisao (pendente/revisado/todos) + data de
+    emissao - usado pela Central de Alertas (que ainda tem o fluxo de marcar
+    uma OC sinalizada como revisada)."""
+
+    condicoes: list[str] = []
+    parametros: list[str] = []
+
+    if status == "pendente":
+        condicoes.append(f"{prefixo}.revisado = false")
+    elif status == "revisado":
+        condicoes.append(f"{prefixo}.revisado = true")
+
+    condicoes_data, parametros_data = _condicoes_data(ano, mes, dia, prefixo)
+    condicoes += condicoes_data
+    parametros += parametros_data
+
+    return condicoes, parametros
+
+
+def _condicoes_filtro_ordens(
+    faturamento: str, status_alerta: str, ano: Optional[int], mes: Optional[int], dia: Optional[int]
+) -> tuple[list[str], list[str]]:
+    """Condicoes de filtro da pagina Ordens de Compra: instrucao de
+    faturamento (extraida da observacao da OC - ver tipo_faturamento em
+    schema.py), status de alerta (Revisar/OK - o mesmo criterio da coluna
+    Status/TEM_ALERTA_SQL) e data de emissao. Sem filtro de revisado aqui -
+    essa pagina nao tem mais o fluxo de marcar como revisado (ver Central de
+    Alertas)."""
+
+    condicoes: list[str] = []
+    parametros: list[str] = []
+
+    if faturamento == "faturar_repor":
+        condicoes.append("oc.tipo_faturamento ILIKE %s")
+        parametros.append("%REPOR%")
+    elif faturamento == "faturar":
+        condicoes.append("oc.tipo_faturamento ILIKE %s AND oc.tipo_faturamento NOT ILIKE %s")
+        parametros += ["%FATURAR%", "%REPOR%"]
+    elif faturamento == "sem_instrucao":
+        condicoes.append("oc.tipo_faturamento IS NULL")
+
+    if status_alerta == "revisar":
+        condicoes.append(TEM_ALERTA_SQL)
+    elif status_alerta == "ok":
+        condicoes.append(f"NOT {TEM_ALERTA_SQL}")
+
+    condicoes_data, parametros_data = _condicoes_data(ano, mes, dia, "oc")
+    condicoes += condicoes_data
+    parametros += parametros_data
 
     return condicoes, parametros
 
@@ -186,7 +245,8 @@ def analytics(request: Request, sessao=Depends(exige_login)):
 def ordens_compra(
     request: Request,
     sessao=Depends(exige_login),
-    status: str = Query("todos", pattern="^(todos|pendente|revisado)$"),
+    faturamento: str = Query("todos", pattern="^(todos|faturar_repor|faturar|sem_instrucao)$"),
+    status_alerta: str = Query("todos", pattern="^(todos|revisar|ok)$"),
     ano: Optional[str] = Query(None),
     mes: Optional[str] = Query(None),
     dia: Optional[str] = Query(None),
@@ -197,18 +257,16 @@ def ordens_compra(
     ano, mes, dia = ano_int, mes_int, dia_int
 
     with pool.obter_conexao() as conn:
-        pode_revisar = _usuario_pode_revisar(conn, sessao)
         anos_disponiveis = _anos_disponiveis(conn)
         banner_falhas = _banner_falhas(conn)
 
-        condicoes_oc, params_oc = _condicoes_filtro(status, ano, mes, dia, "oc")
+        condicoes_oc, params_oc = _condicoes_filtro_ordens(faturamento, status_alerta, ano, mes, dia)
         where_oc = ("WHERE " + " AND ".join(condicoes_oc)) if condicoes_oc else ""
         ocs_recentes = conn.execute(
             f"""
             SELECT oc.id, oc.numero_oc, oc.data_emissao, c.nome AS cliente, oc.valor_total, oc.layout_origem,
-                   oc.arquivo_origem, oc.revisado,
-                   (oc.status_extracao = 'possivel_duplicata' OR oc.alerta_valor_divergente
-                    OR oc.alerta_baixa_confianca OR oc.alerta_cnpj_invalido) AS tem_alerta
+                   oc.arquivo_origem, oc.tipo_faturamento,
+                   {TEM_ALERTA_SQL} AS tem_alerta
             FROM ordens_compra oc JOIN clientes c ON c.id = oc.cliente_id
             {where_oc}
             ORDER BY oc.data_extracao DESC LIMIT 15
@@ -221,13 +279,14 @@ def ordens_compra(
         "ordens.html",
         {
             "usuario_email": sessao.usuario.email,
-            "pode_revisar": pode_revisar,
             "ocs_recentes": ocs_recentes,
             "banner_falhas": banner_falhas,
             "fmt_moeda": fmt_moeda,
             "status_oc": status_oc,
+            "badge_tipo_faturamento": badge_tipo_faturamento,
             "link_documento": link_documento,
-            "filtro_status": status,
+            "filtro_faturamento": faturamento,
+            "filtro_status_alerta": status_alerta,
             "filtro_ano": ano,
             "filtro_mes": mes,
             "filtro_dia": dia,

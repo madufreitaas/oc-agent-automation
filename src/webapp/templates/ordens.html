@@ -2,20 +2,19 @@
 {% set aba_ativa = "detalhada" %}
 {% block titulo %}Ordens de Compra - Painel de Ordens de Compra{% endblock %}
 {% block titulo_pagina %}Ordens de Compra{% endblock %}
-{% block subtitulo_pagina %}Ordens de compra extraidas, com filtro por revisao e data de emissao{% endblock %}
+{% block subtitulo_pagina %}Ordens de compra extraidas, com filtro por faturamento, status e data de emissao{% endblock %}
 {% block content %}
 {% if banner_falhas %}
 <div class="banner-alerta">&#9888; {{ banner_falhas }} <a href="/auditoria" style="margin-left:4px;">Ver auditoria</a>.</div>
 {% endif %}
 
-{% set acao_filtro = "/detalhada" %}
-{% include "_filtros.html" %}
+{% include "_filtros_ordens.html" %}
 
 <div class="secao">
   <h2>Ordens de compra recentes</h2>
   <div class="tabela-scroll">
   <table>
-    <thead><tr><th>Numero OC</th><th class="col-opcional">Emissao</th><th>Cliente</th><th>Valor total</th><th class="col-opcional">Layout</th><th>Status</th><th>Documento</th><th>Revisao</th></tr></thead>
+    <thead><tr><th>Numero OC</th><th class="col-opcional">Emissao</th><th>Cliente</th><th>Valor total</th><th class="col-opcional">Layout</th><th>Status</th><th>Faturamento</th><th>Documento</th></tr></thead>
     <tbody>
     {% for row in ocs_recentes %}
       <tr>
@@ -25,19 +24,8 @@
         <td class="numero">{{ fmt_moeda(row.valor_total) }}</td>
         <td class="col-opcional">{{ row.layout_origem or "-" }}</td>
         <td>{{ status_oc(row.tem_alerta) | safe }}</td>
+        <td>{{ badge_tipo_faturamento(row.tipo_faturamento) | safe }}</td>
         <td>{{ link_documento(row.arquivo_origem) | safe }}</td>
-        <td>
-          {% if row.revisado %}
-            <span class="status-dot status-dot-ok"></span>Revisado
-            {% if pode_revisar %}
-            <a href="#" onclick="desfazerRevisaoOC({{ row.id }}, this); return false;" style="font-size:11px; color:var(--muted); margin-left:6px;">(desfazer)</a>
-            {% endif %}
-          {% elif pode_revisar %}
-            <button class="btn btn-secundario" style="padding:4px 10px; min-height:auto; font-size:12px;" onclick="revisarOC({{ row.id }}, this)">Marcar revisado</button>
-          {% else %}
-            <span class="status-dot status-dot-atencao"></span>Pendente
-          {% endif %}
-        </td>
       </tr>
     {% endfor %}
     {% if not ocs_recentes %}
@@ -46,8 +34,6 @@
     </tbody>
   </table>
   </div>
-  <footer>Dados clinicos (paciente, convenio, cirurgiao) nao sao exibidos neste painel por serem informacao sensivel (LGPD).</footer>
+  <footer>Dados clinicos (paciente, convenio, cirurgiao) nao sao exibidos neste painel por serem informacao sensivel (LGPD). Revisar uma OC sinalizada continua na Central de Alertas.</footer>
 </div>
-
-{% include "_scripts_revisao.html" %}
 {% endblock %}

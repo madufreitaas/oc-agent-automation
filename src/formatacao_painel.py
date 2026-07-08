@@ -70,6 +70,16 @@ def status_oc(tem_alerta: bool) -> str:
     return '<span class="status-dot status-dot-ok"></span>OK'
 
 
+def badge_tipo_faturamento(tipo: str | None) -> str:
+    """Mostra a instrucao comercial extraida da observacao da OC (ver
+    OrdemDeCompra.tipo_faturamento em schema.py) - nao e um alerta, so
+    informacao logistica, por isso sem status-dot."""
+
+    if not tipo:
+        return '<span style="color: var(--muted); font-size: 12px;">-</span>'
+    return f'<span class="badge">{html.escape(tipo.title())}</span>'
+
+
 def link_documento(nome_arquivo: str | None) -> str:
     """Renderiza o nome do arquivo de origem como link clicavel para onde o
     PDF processado fica arquivado, se URL_PASTA_ENTRADA_OC estiver configurada
