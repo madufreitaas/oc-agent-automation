@@ -1,0 +1,39 @@
+name: Keep-alive (Supabase demo + site no Render)
+
+# Portfolio: nem o Supabase (projeto demo, camada gratuita, pausa apos
+# inatividade prolongada) nem o Render (servico gratuito, "dorme" apos ~15
+# min sem trafego) sabem que este projeto e um portfolio que um recrutador
+# pode acessar depois de dias parado. Este workflow so evita a PAUSA do
+# projeto Supabase (isso quebraria o site de verdade, exigindo reativacao
+# manual no painel) - nao tenta manter o Render sempre acordado (precisaria
+# rodar a cada poucos minutos, o que nao compensa so para evitar uns 30-50s
+# de espera no primeiro acesso apos inatividade).
+#
+# SUPABASE_URL e a chave anon/publishable sao os mesmos valores ja expostos
+# em src/webapp/templates/login.html para o supabase-js rodar no navegador -
+# nao sao segredo (ao contrario da service_role key, que nunca aparece
+# aqui), por isso ficam direto neste arquivo, sem precisar de GitHub Secret.
+# O endpoint /auth/v1/health exige o header apikey mesmo sendo uma checagem
+# publica de saude, por isso a chave anon esta presente na chamada abaixo.
+
+on:
+  schedule:
+    - cron: "0 12 * * 1" # toda segunda-feira, 12:00 UTC
+  workflow_dispatch: {} # permite rodar manualmente em Actions > Run workflow
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pingar o Supabase Auth (evita pausa por inatividade do projeto demo)
+        run: |
+          curl -sf "https://vzfnqxhzetxqgnqimwql.supabase.co/auth/v1/health" \
+            -H "apikey: sb_publishable_BpuuJ7xirVjOCx-19PaeXw_sdQt9pLu" \
+            -o /dev/null
+          echo "Supabase respondeu OK."
+
+      - name: Pingar o site no Render (health check, nao critico se estiver dormindo)
+        continue-on-error: true
+        run: |
+          curl -sf --max-time 60 "https://oc-agent-automation.onrender.com/healthz" -o /dev/null
+          echo "Render respondeu OK."
