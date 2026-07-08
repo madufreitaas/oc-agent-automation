@@ -11,18 +11,29 @@ arredondada so no lado do dado (reta na base).
 
 CSS = """
 :root {
-  --surface-1: #fcfcfb; --page: #f9f9f7; --text-primary: #0b0b0b;
+  --surface-1: #fcfcfb; --surface-2: #f3f2ee; --page: #f9f9f7; --text-primary: #0b0b0b;
   --text-secondary: #52514e; --muted: #898781; --grid: #e1e0d9;
   --baseline: #c3c2b7; --border: rgba(11,11,11,0.10); --series-1: #2a78d6;
   --status-good: #0ca30c; --status-warning: #fab219; --status-critical: #d03b3b;
   --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 1px 8px rgba(11,11,11,0.04);
+  --shadow-lift: 0 4px 10px rgba(11,11,11,0.06), 0 1px 3px rgba(11,11,11,0.06);
+  /* --brand e a cor de identidade visual (sidebar, botoes, links ativos) - por
+     pedido de marca, usa o mesmo azul dos graficos (--series-1) em vez de uma
+     cor separada, entao os dois tokens ficam iguais de proposito aqui. */
+  --brand: var(--series-1); --brand-hover: color-mix(in srgb, var(--series-1) 78%, black);
+  --brand-soft: color-mix(in srgb, var(--series-1) 12%, transparent);
+  --brand-contrast: #ffffff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface-1: #1a1a19; --page: #0d0d0d; --text-primary: #ffffff;
+    --surface-1: #1a1a19; --surface-2: #141413; --page: #0d0d0d; --text-primary: #ffffff;
     --text-secondary: #c3c2b7; --muted: #898781; --grid: #2c2c2a;
     --baseline: #383835; --border: rgba(255,255,255,0.10); --series-1: #3987e5;
     --shadow: 0 1px 2px rgba(0,0,0,0.20), 0 1px 8px rgba(0,0,0,0.24);
+    --shadow-lift: 0 6px 16px rgba(0,0,0,0.32), 0 1px 3px rgba(0,0,0,0.28);
+    --brand: var(--series-1); --brand-hover: color-mix(in srgb, var(--series-1) 80%, white);
+    --brand-soft: color-mix(in srgb, var(--series-1) 16%, transparent);
+    --brand-contrast: #ffffff;
   }
 }
 * { box-sizing: border-box; }
@@ -118,12 +129,13 @@ td.numero { text-align: right; font-variant-numeric: tabular-nums; }
 footer { color: var(--muted); font-size: 12px; margin-top: 12px; }
 .barra-acoes { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
 .btn {
-  background: var(--series-1); color: #ffffff; border: none; border-radius: 8px;
+  background: var(--brand); color: var(--brand-contrast); border: none; border-radius: 8px;
   padding: 10px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
   font-family: inherit; min-height: 38px;
 }
-.btn:hover { opacity: 0.88; }
-.btn:active { opacity: 0.78; }
+.btn:hover { background: var(--brand-hover); }
+.btn:active { opacity: 0.85; }
+.btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .btn-secundario {
   background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
 }
@@ -166,11 +178,127 @@ footer { color: var(--muted); font-size: 12px; margin-top: 12px; }
 .menu-item-ativo { color: var(--text-primary); border-bottom-color: var(--series-1); }
 .aba { display: none; }
 .aba-ativa { display: block; }
+
+/* --- App shell (webapp/templates/base.html) -------------------------------
+   Layout de sidebar exclusivo do site (FastAPI + Jinja). O relatorio estatico
+   gerado por report_generator.py monta seu proprio HTML e continua usando
+   .container/.cabecalho/.menu-abas acima - nenhuma classe deste bloco existe
+   la, entao as duas telas evoluem sem se afetar. */
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar {
+  flex: 0 0 232px; background: var(--surface-2); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 22px 16px;
+  position: sticky; top: 0; height: 100vh;
+}
+.sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 22px; }
+.sidebar-brand .marca-icone {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, black));
+}
+.sidebar-brand .marca-texto { min-width: 0; }
+.sidebar-brand .eyebrow { margin: 0 0 2px; }
+.sidebar-brand h1 { font-size: 15px; margin: 0; line-height: 1.2; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; color: var(--text-secondary); text-decoration: none;
+}
+.nav-item svg { flex-shrink: 0; opacity: 0.75; }
+.nav-item:hover { background: var(--border); color: var(--text-primary); }
+.nav-item-ativo, .nav-item-ativo:hover {
+  background: var(--brand-soft); color: var(--brand);
+}
+.nav-item-ativo svg { opacity: 1; }
+.sidebar-user {
+  border-top: 1px solid var(--border); padding-top: 14px; font-size: 12px; color: var(--muted);
+}
+.sidebar-user a { color: var(--muted); }
+.sidebar-user a:hover { color: var(--text-primary); }
+.main-area { flex: 1; min-width: 0; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 18px 32px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: blur(6px); z-index: 5;
+}
+.topbar h1 { font-size: 19px; margin: 0; }
+.topbar .subtitulo { margin: 2px 0 0; }
+.conteudo-pagina { padding: 28px 32px; }
+.sidebar-toggle {
+  display: inline-flex; background: none; border: 1px solid var(--border); border-radius: 7px;
+  width: 34px; height: 34px; align-items: center; justify-content: center; cursor: pointer;
+  color: var(--text-primary); flex-shrink: 0;
+}
+.sidebar-toggle:hover { background: var(--border); }
+/* Acima de 860px o botao recolhe a sidebar no lugar (largura->0), preservando
+   o layout de duas colunas; abaixo disso ela vira um overlay que desliza por
+   cima do conteudo - os dois modos usam o mesmo botao, decidido em JS. */
+.sidebar {
+  transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
+}
+.app-shell.sidebar-fechada .sidebar {
+  width: 0; min-width: 0; flex-basis: 0; padding-left: 0; padding-right: 0;
+  border-right: none; overflow: hidden;
+}
+@media (max-width: 860px) {
+  .sidebar {
+    position: fixed; left: 0; top: 0; z-index: 20; width: 232px; flex-basis: 232px;
+    transform: translateX(-100%); transition: transform 0.18s ease; box-shadow: var(--shadow-lift);
+  }
+  .sidebar.sidebar-aberta { transform: translateX(0); }
+  .app-shell.sidebar-fechada .sidebar { width: 232px; flex-basis: 232px; padding: 22px 16px; border-right: 1px solid var(--border); }
+  .topbar { padding: 14px 16px; }
+  .conteudo-pagina { padding: 18px 14px; }
+}
+
+/* Cartao de KPI com lasca de cor no topo (identifica cada indicador sem
+   depender so do numero) - usa as cores categoricas ja validadas da skill de
+   dataviz, na mesma ordem fixa (nunca ciclada aleatoriamente). */
+.card-kpi { position: relative; overflow: hidden; }
+.card-kpi::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--kpi-accent, var(--brand));
+}
+.card-kpi .rotulo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
 @media print {
   .barra-acoes { display: none; }
   .menu-abas { display: none; }
   .aba { display: block; }
   .card, .secao { box-shadow: none; }
   body { background: #ffffff; }
+  .sidebar, .topbar, .sidebar-toggle { display: none; }
+  .app-shell { display: block; }
 }
+
+/* --- Login (webapp/templates/login.html) ---------------------------------
+   Tela isolada (fora do app-shell) - cartao central sobre um fundo com
+   gradiente sutil nas duas cores de marca/dado, so para dar personalidade
+   sem competir com o conteudo do formulario. */
+.tela-login {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(700px circle at 12% -10%, color-mix(in srgb, var(--brand) 16%, transparent), transparent 60%),
+    radial-gradient(600px circle at 100% 110%, color-mix(in srgb, var(--series-1) 14%, transparent), transparent 60%),
+    var(--page);
+}
+.cartao-login {
+  width: 100%; max-width: 380px; background: var(--surface-1); border: 1px solid var(--border);
+  box-shadow: var(--shadow-lift); border-radius: 16px; padding: 32px 28px;
+}
+.cartao-login .marca-icone {
+  width: 40px; height: 40px; border-radius: 10px; margin: 0 auto 16px;
+  background: linear-gradient(135deg, var(--brand), color-mix(in srgb, var(--brand) 55%, black));
+}
+.cartao-login .cabecalho-login { text-align: center; margin-bottom: 22px; }
+.cartao-login h1 { font-size: 18px; }
+.btn-microsoft {
+  width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 11px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; min-height: 42px;
+}
+.btn-microsoft:hover { background: var(--page); }
+.btn-microsoft:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 """

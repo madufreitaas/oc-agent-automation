@@ -8,17 +8,21 @@
   <style>{{ css }}</style>
 </head>
 <body>
-<div class="container" style="max-width: 420px; padding-top: 15vh;">
-  <div class="cabecalho">
-    <p class="eyebrow">MDR / Mederi</p>
-    <h1>Painel de Ordens de Compra</h1>
-  </div>
-  <div class="secao" style="text-align:center;">
-    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 20px;">
+<div class="tela-login">
+  <div class="cartao-login">
+    <div class="cabecalho-login">
+      <div class="marca-icone"></div>
+      <p class="eyebrow">MDR Saude</p>
+      <h1>Painel de Ordens de Compra</h1>
+    </div>
+    <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 20px; text-align:center;">
       Entre com sua conta Microsoft para continuar.
     </p>
-    <button id="btn-login" class="btn" style="width:100%;">Entrar com Microsoft</button>
-    <p id="mensagem-erro" style="color: var(--status-critical); font-size: 12px; margin-top: 12px; display:none;"></p>
+    <button id="btn-login" class="btn-microsoft">
+      <svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="1" width="6.5" height="6.5" fill="#F25022"/><rect x="8.5" y="1" width="6.5" height="6.5" fill="#7FBA00"/><rect x="1" y="8.5" width="6.5" height="6.5" fill="#00A4EF"/><rect x="8.5" y="8.5" width="6.5" height="6.5" fill="#FFB900"/></svg>
+      Entrar com Microsoft
+    </button>
+    <p id="mensagem-erro" style="color: var(--status-critical); font-size: 12px; margin-top: 12px; display:none; text-align:center;"></p>
   </div>
 </div>
 

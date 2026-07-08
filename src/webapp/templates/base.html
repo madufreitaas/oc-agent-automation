@@ -4,36 +4,88 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Painel de Ordens de Compra</title>
+  <title>{% block titulo %}Painel de Ordens de Compra{% endblock %}</title>
   <style>{{ css }}</style>
-  <style>
-    /* .menu-item em estilo_painel.py foi desenhado para <button> (relatorio
-       HTML estatico, trocado via JS); aqui viram links de verdade (<a>) entre
-       rotas do FastAPI - so reseta o sublinhado padrao do navegador. */
-    a.menu-item { text-decoration: none; display: inline-block; }
-  </style>
 </head>
 <body>
-<div class="container">
-<div class="cabecalho">
-  <p class="eyebrow">MDR / Mederi &middot; extraido automaticamente via oc-agent-automation</p>
-  <h1>Painel de Ordens de Compra</h1>
-</div>
+<div class="app-shell" id="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="marca-icone"></div>
+      <div class="marca-texto">
+        <p class="eyebrow">MDR Saude</p>
+        <h1>OC Automation</h1>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item {% if aba_ativa == 'analytics' %}nav-item-ativo{% endif %}" href="/">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 13.5V2.5M2 13.5H14M5.5 13.5V8M9 13.5V5M12.5 13.5V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        Analytics
+      </a>
+      <a class="nav-item {% if aba_ativa == 'detalhada' %}nav-item-ativo{% endif %}" href="/detalhada">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M2 6.5H14M6 2.5V13.5" stroke="currentColor" stroke-width="1.6"/></svg>
+        Detalhada
+      </a>
+    </nav>
+    {% if usuario_email %}
+    <div class="sidebar-user">
+      {{ usuario_email }}<br>
+      <a href="/logout">Sair</a>
+    </div>
+    {% endif %}
+  </aside>
 
-<div class="menu-abas" style="justify-content: space-between; align-items: center;">
-  <div style="display:flex;">
-    <a class="menu-item {% if aba_ativa == 'analytics' %}menu-item-ativo{% endif %}" href="/">Analytics</a>
-    <a class="menu-item {% if aba_ativa == 'detalhada' %}menu-item-ativo{% endif %}" href="/detalhada">Detalhada</a>
+  <div class="main-area">
+    <div class="topbar">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4H14M2 8H14M2 12H14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <div>
+          <h1>{% block titulo_pagina %}{% endblock %}</h1>
+          <p class="subtitulo">{% block subtitulo_pagina %}{% endblock %}</p>
+        </div>
+      </div>
+    </div>
+    <div class="conteudo-pagina">
+      {% block content %}{% endblock %}
+    </div>
   </div>
-  {% if usuario_email %}
-  <div style="font-size: 12px; color: var(--muted); white-space: nowrap;">
-    {{ usuario_email }} &middot; <a class="menu-item" style="margin-right:0; padding:0;" href="/logout">Sair</a>
-  </div>
-  {% endif %}
 </div>
 
-{% block content %}{% endblock %}
+<script>
+  // Um unico botao abre/fecha a sidebar nos dois modos de layout (ver
+  // estilo_painel.py): acima de 860px ela recolhe no lugar (preferencia
+  // guardada em localStorage, ja que cada pagina e um load completo, sem
+  // SPA); abaixo disso vira um overlay que desliza por cima do conteudo
+  // (estado de sessao, nao precisa persistir).
+  (function () {
+    var botao = document.getElementById('sidebar-toggle');
+    var casca = document.getElementById('app-shell');
+    var sidebar = document.getElementById('sidebar');
+    var CHAVE = 'ocPainelSidebarFechada';
+    var mediaMobile = window.matchMedia('(max-width: 860px)');
 
-</div>
+    if (!mediaMobile.matches && localStorage.getItem(CHAVE) === '1') {
+      casca.classList.add('sidebar-fechada');
+    }
+
+    function estaAberta() {
+      return mediaMobile.matches
+        ? sidebar.classList.contains('sidebar-aberta')
+        : !casca.classList.contains('sidebar-fechada');
+    }
+
+    botao.addEventListener('click', function () {
+      if (mediaMobile.matches) {
+        sidebar.classList.toggle('sidebar-aberta');
+      } else {
+        var fechada = casca.classList.toggle('sidebar-fechada');
+        localStorage.setItem(CHAVE, fechada ? '1' : '0');
+      }
+      botao.setAttribute('aria-expanded', estaAberta() ? 'true' : 'false');
+    });
+  })();
+</script>
 </body>
 </html>

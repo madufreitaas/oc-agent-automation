@@ -177,7 +177,7 @@ def gerar_relatorio(
     corpo = f"""
 <div class="container">
 <div class="cabecalho">
-  <p class="eyebrow">MDR / Mederi &middot; extraido automaticamente via oc-agent-automation</p>
+  <p class="eyebrow">MDR Saude &middot; extraido automaticamente via oc-agent-automation</p>
   <h1>Painel de Ordens de Compra</h1>
   <p class="subtitulo">Atualizado em {gerado_em}</p>
 </div>

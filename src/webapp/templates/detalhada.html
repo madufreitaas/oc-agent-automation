@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% set aba_ativa = "detalhada" %}
+{% block titulo %}Detalhada - Painel de Ordens de Compra{% endblock %}
+{% block titulo_pagina %}Detalhada{% endblock %}
+{% block subtitulo_pagina %}Ordens de compra, alertas de revisao e auditoria da extracao{% endblock %}
 {% block content %}
 {% if banner_falhas %}
 <div class="banner-alerta">&#9888; {{ banner_falhas }}</div>
