@@ -11,8 +11,8 @@
 {% include "_filtros_ordens.html" %}
 
 <div class="secao">
-  <h2>Ordens de compra recentes</h2>
-  <div class="tabela-scroll">
+  <h2>Ordens de compra ({{ ocs_recentes|length }})</h2>
+  <div class="tabela-scroll tabela-scroll-alta">
   <table>
     <thead><tr><th>Numero OC</th><th class="col-opcional">Emissao</th><th>Cliente</th><th>Valor total</th><th class="col-opcional">Layout</th><th>Status</th><th>Faturamento</th><th>Documento</th></tr></thead>
     <tbody>

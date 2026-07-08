@@ -6,6 +6,13 @@ Todos os dados (hospitais, pacientes, CNPJs, valores) sao FICTICIOS.
 Usado apenas para demonstrar que o pipeline de extracao funciona
 independente do layout do documento de origem.
 
+Os CNPJs dos hospitais sao ficticios mas com digito verificador VALIDO (ver
+validadores.cnpj_valido) em 3 dos 4 layouts - de proposito, para o alerta
+"CNPJ invalido" (sql/queries/cnpj_invalido.sql) nao acender pra praticamente
+toda OC gerada, o que aconteceu quando o volume de PDFs cresceu com --extra.
+O CNPJ do Hospital Boa Esperanca (layout_mv2000) continua invalido de
+proposito, para o alerta continuar tendo pelo menos um caso real pra mostrar.
+
 Rodado sem argumentos, gera so os 4 PDFs base de sempre (mesmo nome/conteudo
 de sempre - tests/test_pdf_reader.py depende disso). Para testar o pipeline
 com mais volume, `--extra N` gera N PDFs adicionais reaproveitando os mesmos
@@ -56,7 +63,7 @@ def layout_hospital_classico(
     y -= 10
     c.drawString(40, y, "CEP 60000-000 | Tel.: 85 3200-0000")
     y -= 10
-    c.drawString(40, y, "CNPJ: 11.222.333/0001-44 | Inscricao Estadual: Isento")
+    c.drawString(40, y, "CNPJ: 11.222.333/0001-81 | Inscricao Estadual: Isento")
 
     c.setFont("Helvetica-Bold", 11)
     y -= 20
@@ -149,7 +156,7 @@ def layout_totvs_tabela(
     c.drawString(40, y, "CEP: 04100000  Cidade: SAO PAULO")
     c.drawString(300, y, "CNPJ/CPF: 29.329.985/0007-70")
     y -= 10
-    c.drawString(40, y, "CNPJ/CPF: 55.666.777/0001-88")
+    c.drawString(40, y, "CNPJ/CPF: 55.666.777/0001-81")
     c.drawString(300, y, "Email: vendadireta@mdrsaude.com.br")
 
     y -= 24
@@ -295,7 +302,7 @@ def layout_samer_gavea(
     c.drawString(40, y, "22040-000  Niteroi  RJ")
     c.drawString(400, y, f"Data      {data_emissao}")
     y -= 10
-    c.drawString(40, y, "CNPJ 44.555.666/0001-77")
+    c.drawString(40, y, "CNPJ 44.555.666/0001-81")
     c.drawString(400, y, "Comprador Comprador TOTVS")
 
     y -= 20

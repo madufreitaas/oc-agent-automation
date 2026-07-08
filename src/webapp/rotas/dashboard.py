@@ -269,7 +269,7 @@ def ordens_compra(
                    {TEM_ALERTA_SQL} AS tem_alerta
             FROM ordens_compra oc JOIN clientes c ON c.id = oc.cliente_id
             {where_oc}
-            ORDER BY oc.data_extracao DESC LIMIT 15
+            ORDER BY oc.data_extracao DESC
             """,
             params_oc,
         ).fetchall()
@@ -347,7 +347,7 @@ def auditoria(request: Request, sessao=Depends(exige_login)):
     with pool.obter_conexao() as conn:
         banner_falhas = _banner_falhas(conn)
         log_extracao = conn.execute(
-            "SELECT arquivo, timestamp, status, confianca, erro FROM log_extracao ORDER BY timestamp DESC LIMIT 30"
+            "SELECT arquivo, timestamp, status, confianca, erro FROM log_extracao ORDER BY timestamp DESC"
         ).fetchall()
 
     return templates.TemplateResponse(

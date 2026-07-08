@@ -2,7 +2,7 @@
 {% set aba_ativa = "auditoria" %}
 {% block titulo %}Auditoria e Governanca - Painel de Ordens de Compra{% endblock %}
 {% block titulo_pagina %}Auditoria e Governanca{% endblock %}
-{% block subtitulo_pagina %}Como a extracao funciona e o log das ultimas tentativas{% endblock %}
+{% block subtitulo_pagina %}Como a extracao funciona e o log completo de tentativas{% endblock %}
 {% block content %}
 {% if banner_falhas %}
 <div class="banner-alerta">&#9888; {{ banner_falhas }}</div>
@@ -13,9 +13,10 @@
   <div class="governanca">
     <p>Este painel e gerado automaticamente a partir de PDFs de Ordens de Compra, extraidos por um modelo de linguagem (LLM) via OpenRouter (o modelo especifico e configuravel, ver OPENROUTER_MODEL no .env). Cada extracao e validada contra um schema fixo antes de entrar no banco, com retry automatico em caso de falha transitoria de rede.</p>
     <p>Dados de saude do paciente (quando presentes na observacao da OC) ficam isolados na tabela dados_clinicos, separada das tabelas comerciais, e nao aparecem em nenhuma consulta, exportacao ou secao deste painel.</p>
-    <p>Um arquivo que falha repetidamente e movido para uma pasta de quarentena em vez de ser tentado para sempre. O log abaixo mostra as ultimas tentativas de extracao (sucesso e falha), com o arquivo, data/hora, status, confianca do modelo e o erro registrado quando houve falha.</p>
+    <p>Um arquivo que falha repetidamente e movido para uma pasta de quarentena em vez de ser tentado para sempre. O log abaixo mostra todas as tentativas de extracao (sucesso e falha), com o arquivo, data/hora, status, confianca do modelo e o erro registrado quando houve falha.</p>
   </div>
-  <div class="tabela-scroll">
+  <h2 style="font-size:13px; color:var(--muted); margin: 0 0 12px;">Log de extracao ({{ log_extracao|length }})</h2>
+  <div class="tabela-scroll tabela-scroll-alta">
   <table>
     <thead><tr><th>Arquivo</th><th>Data/hora</th><th>Status</th><th>Confianca</th><th>Erro</th></tr></thead>
     <tbody>

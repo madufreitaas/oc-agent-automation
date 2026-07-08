@@ -111,6 +111,11 @@ h1 { font-size: 24px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em
   font-variant-numeric: tabular-nums; min-width: 72px; text-align: right;
 }
 .tabela-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* Sem LIMIT na query (ver dashboard.py) para o filtro sempre mostrar todo
+   resultado, nao so os N mais recentes - isto rola verticalmente em vez de
+   empurrar a pagina inteira pra baixo quando o resultado e grande. */
+.tabela-scroll-alta { max-height: 520px; overflow-y: auto; }
+.tabela-scroll-alta thead th { position: sticky; top: 0; background: var(--surface-1); z-index: 1; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td {
   text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--grid);
