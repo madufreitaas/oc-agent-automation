@@ -10,7 +10,7 @@ Hoje, os dados dessas OCs (numero do pedido, itens, valores, prazo de pagamento,
 
 A tentacao inicial em um problema assim e escrever um parser por template: identificar coordenadas de texto ou padroes de regex especificos para cada layout de hospital. Essa abordagem foi descartada de proposito. Com dezenas de clientes atuais e novos entrando com frequencia, um parser por template significaria escrever e manter uma nova extracao a cada vez que um hospital novo (ou uma nova versao do sistema de um hospital existente) aparecesse.
 
-Em vez disso, o pipeline usa um modelo de linguagem (Claude) para ler o texto extraido do PDF e devolver os campos ja estruturados, seguindo um schema fixo validado por Pydantic. A logica de "entender o layout" fica a cargo do modelo, nao de codigo escrito a mao. Isso significa que um layout novo, nunca visto antes, tem boas chances de ser extraido corretamente sem nenhuma mudanca no codigo.
+Em vez disso, o pipeline usa um modelo de linguagem (via OpenRouter, com o modelo especifico configuravel sem mudar codigo - ver `OPENROUTER_MODEL`) para ler o texto extraido do PDF e devolver os campos ja estruturados, seguindo um schema fixo validado por Pydantic. A logica de "entender o layout" fica a cargo do modelo, nao de codigo escrito a mao. Isso significa que um layout novo, nunca visto antes, tem boas chances de ser extraido corretamente sem nenhuma mudanca no codigo.
 
 Quatro padroes de layout reais (anonimizados) foram usados como referencia para validar essa abordagem: um hospital com cabecalho classico, um sistema TOTVS com tabela larga, um sistema MV2000 com campos linha a linha, e uma grade hospitalar simples com bordas. Os quatro geraram extracoes corretas usando o mesmo prompt e o mesmo schema.
 
@@ -28,4 +28,4 @@ Duplicidade sinalizada, nunca excluida automaticamente. Uma automacao de ingesta
 
 ## Resultado
 
-O pipeline completo (leitura de PDF, extracao via LLM, carga em banco relacional, consultas SQL prontas, exportacao CSV e relatorio HTML) roda ponta a ponta a partir de quatro PDFs de exemplo, sem nenhuma configuracao alem de uma chave de API do Claude. O modo producao esta implementado e funcional, pronto para ser ligado assim que a pasta de entrada for configurada.
+O pipeline completo (leitura de PDF, extracao via LLM, carga em banco relacional, consultas SQL prontas, exportacao CSV e relatorio HTML) roda ponta a ponta a partir de PDFs de exemplo, sem nenhuma configuracao alem de uma chave de API da OpenRouter e um projeto Supabase gratuito. O modo producao esta implementado e funcional, pronto para ser ligado assim que a pasta de entrada for configurada.
