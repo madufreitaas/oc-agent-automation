@@ -125,6 +125,10 @@ O fluxo de revisao (marcar e desfazer) segue a mesma regra da secao 2: nunca uma
 
 Por ser portfolio, o site pode ficar dias sem acesso entre a visita de um recrutador e outro. O Supabase pausa automaticamente projetos do free tier inativos por muito tempo (a reativacao depois disso nao e instantanea) - um workflow do GitHub Actions (`.github/workflows/keep-alive.yml`) chama o endpoint de saude do Supabase Auth do projeto demo uma vez por semana, so para contar como atividade e evitar a pausa. Deliberadamente nao tenta manter o Render sempre acordado (precisaria rodar a cada poucos minutos, o que nao compensa so para evitar uns 30-50s de espera no primeiro acesso).
 
+## 26. Concorrencia na extracao (paralelismo controlado)
+
+O pipeline extraia PDFs em paralelo, ate `LIMITE_CONCORRENCIA` (padrao 5) de cada vez, em vez de um por um - o gargalo e a espera pela resposta da LLM via OpenRouter (rede), nao CPU, entao isso reduz o tempo total de execucao sem gastar mais tokens (o numero de chamadas a API nao muda, so deixam de esperar uma a outra terminar). Cada worker thread usa sua propria conexao Postgres (`psycopg.Connection` nao e thread-safe para uso concorrente); o resto do fluxo por arquivo (mover para `processados/`/`falhas/`, contar falhas acumuladas) continua sequencial na thread principal, reagindo a cada resultado assim que fica pronto. Mesma logica da secao 11 (`LIMITE_ARQUIVOS_POR_EXECUCAO`) se aplica ao ajustar esse numero: aumentar demais pode esbarrar no limite de taxa (rate limit) do plano na OpenRouter, gerando erro 429 e retry - o que desperdica tokens em vez de economizar tempo.
+
 ## Resumo rapido
 
 | Situacao | O que o sistema faz | O que o sistema nunca faz |

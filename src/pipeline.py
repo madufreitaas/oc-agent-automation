@@ -23,6 +23,13 @@ Se houver mais PDFs pendentes do que LIMITE_ARQUIVOS_POR_EXECUCAO, o
 excedente fica para a proxima execucao (util para nao estourar limite de taxa
 da API se a pasta acumular muitos arquivos).
 
+Ate LIMITE_CONCORRENCIA PDFs sao extraidos em paralelo (ThreadPoolExecutor) -
+o gargalo e a espera pela resposta da LLM (rede), nao CPU, entao isso reduz o
+tempo total sem aumentar o numero de chamadas/tokens gastos. Cada worker
+thread usa sua propria conexao Postgres (psycopg.Connection nao e
+thread-safe para uso concorrente); o resto do fluxo por arquivo (mover para
+processados/falhas, contar falhas) continua sequencial na thread principal.
+
 Cada modo grava por padrao em um projeto Postgres/Supabase diferente (dois
 projetos SEPARADOS, para nao misturar dado real com dado de demonstracao):
 modo demo usa DATABASE_URL_DEMO, modo producao usa DATABASE_URL_PRODUCAO (ver
@@ -36,8 +43,11 @@ import argparse
 import logging
 import logging.handlers
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import psycopg
 from dotenv import load_dotenv
 
 import database
@@ -76,6 +86,14 @@ LIMITE_ALERTA_FALHAS = int(os.environ.get("LIMITE_ALERTA_FALHAS", "3"))
 # entrada acumular muitos PDFs de uma vez; o restante fica pendente para a
 # proxima execucao agendada.
 LIMITE_ARQUIVOS_POR_EXECUCAO = int(os.environ.get("LIMITE_ARQUIVOS_POR_EXECUCAO", "0"))
+
+# Quantos PDFs sao extraidos em paralelo (chamada a LLM via OpenRouter e o
+# maior gargalo do pipeline - rede, nao CPU - entao rodar N de cada vez
+# reduz o tempo total por um fator proximo de N, sem aumentar o custo em
+# tokens: e o mesmo numero de chamadas, so nao mais uma esperando a outra).
+# Nao aumente demais - passar do limite de taxa (rate limit) do seu plano
+# na OpenRouter gera 429 e retry, o que ai sim desperdica tokens.
+LIMITE_CONCORRENCIA = max(1, int(os.environ.get("LIMITE_CONCORRENCIA", "5")))
 
 
 def _coletar_pdfs_demo() -> list[Path]:
@@ -150,25 +168,48 @@ def executar_pipeline(
     conn = database.conectar(dsn)
     database.inicializar_schema(conn)
 
+    # Cada PDF e extraido (chamada a LLM) e gravado (commit proprio, ver
+    # database.salvar_ordem_de_compra/registrar_log_extracao) de forma
+    # independente - psycopg.Connection nao e thread-safe para uso
+    # concorrente, entao cada worker thread do pool abre e reaproveita a
+    # propria conexao (uma por thread, nao uma por PDF) via threading.local.
+    conexoes_por_thread = threading.local()
+    conexoes_abertas = []
+
+    def _conexao_da_thread() -> psycopg.Connection:
+        conexao = getattr(conexoes_por_thread, "conexao", None)
+        if conexao is None:
+            conexao = database.conectar(dsn)
+            conexoes_por_thread.conexao = conexao
+            conexoes_abertas.append(conexao)
+        return conexao
+
+    def _tarefa(caminho_pdf: Path) -> bool:
+        return processar_pdf(_conexao_da_thread(), caminho_pdf)
+
     sucesso = 0
     falhas = 0
-    for caminho_pdf in pdfs:
-        if processar_pdf(conn, caminho_pdf):
-            sucesso += 1
-            if modo == "producao":
-                folder_watcher.marcar_como_processado(caminho_pdf)
-        else:
-            falhas += 1
-            if modo == "producao":
-                total_falhas_arquivo = database.contar_falhas_arquivo(conn, caminho_pdf.name)
-                if total_falhas_arquivo >= LIMITE_FALHAS_QUARENTENA:
-                    folder_watcher.mover_para_falhas(caminho_pdf)
-                    logger.warning(
-                        "%s movido para quarentena apos %d falha(s) de extracao",
-                        caminho_pdf.name,
-                        total_falhas_arquivo,
-                    )
+    concorrencia = min(LIMITE_CONCORRENCIA, len(pdfs)) or 1
+    with ThreadPoolExecutor(max_workers=concorrencia) as executor:
+        for caminho_pdf, deu_certo in zip(pdfs, executor.map(_tarefa, pdfs)):
+            if deu_certo:
+                sucesso += 1
+                if modo == "producao":
+                    folder_watcher.marcar_como_processado(caminho_pdf)
+            else:
+                falhas += 1
+                if modo == "producao":
+                    total_falhas_arquivo = database.contar_falhas_arquivo(conn, caminho_pdf.name)
+                    if total_falhas_arquivo >= LIMITE_FALHAS_QUARENTENA:
+                        folder_watcher.mover_para_falhas(caminho_pdf)
+                        logger.warning(
+                            "%s movido para quarentena apos %d falha(s) de extracao",
+                            caminho_pdf.name,
+                            total_falhas_arquivo,
+                        )
 
+    for conexao in conexoes_abertas:
+        conexao.close()
     conn.close()
 
     resumo = {"modo": modo, "total": len(pdfs), "sucesso": sucesso, "falhas": falhas}
