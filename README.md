@@ -22,7 +22,7 @@ flowchart LR
     D --> F[Relatorio HTML]
 ```
 
-Detalhes de cada componente em [docs/architecture.md](docs/architecture.md). Modelo de dados completo em [docs/data_model.md](docs/data_model.md). Regras de governanca e boas praticas (o que o sistema sinaliza, o que ele nunca faz automaticamente, e por que) em [docs/boas_praticas_e_governanca.md](docs/boas_praticas_e_governanca.md).
+Detalhes de cada componente em [docs/architecture.md](docs/architecture.md). Modelo de dados completo em [docs/data_model.md](docs/data_model.md). Regras de governanca e boas praticas (o que o sistema sinaliza, o que ele nunca faz automaticamente, e por que) em [docs/boas_praticas_e_governanca.md](docs/boas_praticas_e_governanca.md). Recomendacoes para levar o projeto a producao em escala (volume, custo de API, link para o documento original) em [docs/roadmap_producao.md](docs/roadmap_producao.md).
 
 Alem do relatorio HTML estatico (gerado pelo pipeline acima), o projeto tem um site com backend real (Postgres/Supabase, login Microsoft, controle de acesso por papel e fluxo de revisao humana das OCs sinalizadas) em `src/webapp/` - publicado em https://oc-agent-automation.onrender.com. O site e organizado numa sidebar com 4 paginas: Analytics (indicadores e graficos), Ordens de Compra (tabela com filtro por faturamento/status/data), Central de Alertas (fluxo de revisao humana) e Auditoria e Governanca (log completo de extracao). Passo a passo completo (Azure, Supabase, RLS, deploy) em [docs/arquitetura_webapp.md](docs/arquitetura_webapp.md).
 
@@ -121,6 +121,8 @@ oc-agent-automation/
 │   ├── arquitetura_webapp.md    # site (Supabase + FastAPI): setup, deploy, RBAC
 │   ├── data_model.md
 │   ├── case_study.md
+│   ├── boas_praticas_e_governanca.md
+│   ├── roadmap_producao.md      # recomendacoes para ir a producao em escala
 │   └── interview_pitch.md
 ├── sql/
 │   ├── schema_postgres.sql       # schema atual (Postgres/Supabase), aplicado manualmente
